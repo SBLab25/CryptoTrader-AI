@@ -655,7 +655,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-**Built with ❤️ and Claude AI**
 
 *Trade responsibly. This is not financial advice.*
 
