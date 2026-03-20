@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multi-Agent Crypto Trader</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0a0e1a;
+      --panel: #111827;
+      --border: #1f2937;
+      --accent: #3b82f6;
+      --green: #10b981;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --text: #f1f5f9;
+      --muted: #6b7280;
+      --card: #1a2235;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+    /* ── Header ── */
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.3px; }
+    header h1 span { color: var(--accent); }
+    .status-badge {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.8rem; font-weight: 600;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+    .dot.paper { background: var(--yellow); }
+    .dot.offline { background: var(--red); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+    /* ── Layout ── */
+    .main { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 20px 24px; }
+    .full-width { grid-column: 1 / -1; }
+    .col-2 { grid-column: span 2; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+    .card h2 { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; }
+
+    /* ── Metric ── */
+    .metric { display: flex; flex-direction: column; gap: 4px; }
+    .metric .val { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+    .metric .sub { font-size: 0.78rem; color: var(--muted); }
+    .up { color: var(--green); }
+    .down { color: var(--red); }
+    .neutral { color: var(--yellow); }
+
+    /* ── Stats Row ── */
+    .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { color: var(--muted); font-weight: 600; text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(59,130,246,0.04); }
+
+    /* ── Signal Pills ── */
+    .pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+    .pill.strong_buy, .pill.buy { background: rgba(16,185,129,0.15); color: var(--green); }
+    .pill.strong_sell, .pill.sell { background: rgba(239,68,68,0.15); color: var(--red); }
+    .pill.neutral { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .pill.paper { background: rgba(59,130,246,0.15); color: var(--accent); }
+    .pill.live { background: rgba(239,68,68,0.2); color: #fca5a5; }
+
+    /* ── Log ── */
+    .log {
+      background: #080d1a;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      height: 200px;
+      overflow-y: auto;
+      font-family: 'Fira Code', 'Consolas', monospace;
+      font-size: 0.75rem;
+    }
+    .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(31,41,55,0.4); }
+    .log-entry .ts { color: var(--muted); margin-right: 8px; }
+    .log-entry.signal .msg { color: #60a5fa; }
+    .log-entry.trade .msg { color: var(--green); }
+    .log-entry.error .msg { color: var(--red); }
+    .log-entry.info .msg { color: var(--text); }
+
+    /* ── Controls ── */
+    .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    button {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 600;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.8; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-danger { background: var(--red); color: #fff; }
+    .btn-warn { background: var(--yellow); color: #000; }
+    .btn-ghost { background: var(--border); color: var(--text); }
+
+    /* ── Progress bar ── */
+    .progress-bar { background: var(--border); border-radius: 99px; height: 6px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 99px; transition: width 0.3s; }
+
+    /* ── WS Status ── */
+    #ws-status { font-size: 0.75rem; color: var(--muted); }
+
+    /* ── Risk Panel ── */
+    .risk-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.83rem; }
+    .risk-item:last-child { border-bottom: none; }
+    .risk-val { font-weight: 700; }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .main { grid-template-columns: 1fr 1fr; }
+      .stats-row { grid-template-columns: repeat(2,1fr); }
+    }
+    @media (max-width: 580px) {
+      .main { grid-template-columns: 1fr; }
+      .stats-row { grid-template-columns: repeat(2,1fr); }
+      .col-2 { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <h1>🤖 <span>Multi-Agent</span> Crypto Trader</h1>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <span id="ws-status">Connecting...</span>
+    <div class="status-badge">
+      <div class="dot offline" id="mode-dot"></div>
+      <span id="mode-label">Paper Trading</span>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN GRID -->
+<div class="main">
+
+  <!-- Portfolio Value -->
+  <div class="card">
+    <h2>Portfolio Value</h2>
+    <div class="metric">
+      <div class="val" id="total-value">$0.00</div>
+      <div class="sub">Total value (USDT)</div>
+    </div>
+    <div style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:4px">
+        <span style="color:var(--muted)">Invested</span>
+        <span id="invested-value">$0.00</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="invested-bar" style="width:0%;background:var(--accent)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PnL -->
+  <div class="card">
+    <h2>Profit / Loss</h2>
+    <div class="metric">
+      <div class="val" id="total-pnl">$0.00</div>
+      <div class="sub" id="total-pnl-pct">0.00% all time</div>
+    </div>
+    <div style="margin-top:8px;font-size:0.82rem;display:flex;justify-content:space-between;">
+      <span style="color:var(--muted)">Today</span>
+      <span id="daily-pnl" class="neutral">$0.00</span>
+    </div>
+  </div>
+
+  <!-- System Status -->
+  <div class="card">
+    <h2>System Status</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:0.83rem;">
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--muted)">Cycle Count</span>
+        <strong id="cycle-count">0</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--muted)">Open Positions</span>
+        <strong id="open-positions">0</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--muted)">Risk Engine</span>
+        <strong id="risk-status" class="up">Active</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--muted)">Watching</span>
+        <strong id="watching-count">0 symbols</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- Performance Stats -->
+  <div class="card full-width">
+    <h2>Performance Statistics</h2>
+    <div class="stats-row">
+      <div class="metric">
+        <div class="val" id="stat-trades">0</div>
+        <div class="sub">Total Trades</div>
+      </div>
+      <div class="metric">
+        <div class="val up" id="stat-winrate">0%</div>
+        <div class="sub">Win Rate</div>
+      </div>
+      <div class="metric">
+        <div class="val" id="stat-avg-win">$0</div>
+        <div class="sub">Avg Win</div>
+      </div>
+      <div class="metric">
+        <div class="val" id="stat-pf">—</div>
+        <div class="sub">Profit Factor</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Open Positions Table -->
+  <div class="card col-2">
+    <h2>Open Positions</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Qty</th>
+            <th>Entry</th>
+            <th>Current</th>
+            <th>Stop Loss</th>
+            <th>Take Profit</th>
+            <th>Unrealized PnL</th>
+          </tr>
+        </thead>
+        <tbody id="positions-tbody">
+          <tr><td colspan="8" style="color:var(--muted);text-align:center;padding:20px">No open positions</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Risk Config -->
+  <div class="card">
+    <h2>Risk Configuration</h2>
+    <div id="risk-config">
+      <div class="risk-item"><span>Max Position Size</span><span class="risk-val" id="r-max-pos">—</span></div>
+      <div class="risk-item"><span>Stop Loss</span><span class="risk-val" id="r-sl">—</span></div>
+      <div class="risk-item"><span>Take Profit</span><span class="risk-val" id="r-tp">—</span></div>
+      <div class="risk-item"><span>Max Daily Loss</span><span class="risk-val" id="r-daily">—</span></div>
+      <div class="risk-item"><span>Max Drawdown</span><span class="risk-val" id="r-dd">—</span></div>
+    </div>
+  </div>
+
+  <!-- Live Signals Feed -->
+  <div class="card col-2">
+    <h2>Live Signal Feed</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Signal</th>
+            <th>Confidence</th>
+            <th>Entry</th>
+            <th>Stop Loss</th>
+            <th>Take Profit</th>
+            <th>Reasoning</th>
+          </tr>
+        </thead>
+        <tbody id="signals-tbody">
+          <tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">Waiting for signals...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card">
+    <h2>Controls</h2>
+    <div class="controls">
+      <button class="btn-primary" onclick="resumeTrading()">▶ Resume</button>
+      <button class="btn-danger" onclick="stopTrading()">⏹ Stop</button>
+      <button class="btn-warn" onclick="startTrading()">🚀 Start</button>
+      <button class="btn-ghost" onclick="fetchPortfolio()">↻ Refresh</button>
+    </div>
+    <div style="margin-top:12px;font-size:0.75rem;color:var(--muted)">
+      ⚠️ Always start in Paper Trading mode before switching to Live.
+    </div>
+  </div>
+
+  <!-- Activity Log -->
+  <div class="card full-width">
+    <h2>Activity Log (Real-time)</h2>
+    <div class="log" id="activity-log">
+      <div class="log-entry info"><span class="ts">--:--:--</span><span class="msg">Connecting to trading engine...</span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = 'http://localhost:8000';
+  const WS_URL = 'ws://localhost:8000/ws';
+  let ws = null;
+  let reconnectTimer = null;
+  const MAX_SIGNALS = 15;
+  const MAX_LOG = 100;
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function fmt(n, decimals=2) {
+    if (n === null || n === undefined) return '—';
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  }
+
+  function fmtPrice(n) { return '$' + fmt(n, 4); }
+  function fmtUSD(n) { return '$' + fmt(n, 2); }
+
+  function pnlClass(val) {
+    if (val > 0) return 'up';
+    if (val < 0) return 'down';
+    return 'neutral';
+  }
+
+  function addLog(msg, type='info') {
+    const log = document.getElementById('activity-log');
+    const ts = new Date().toTimeString().slice(0,8);
+    const div = document.createElement('div');
+    div.className = `log-entry ${type}`;
+    div.innerHTML = `<span class="ts">${ts}</span><span class="msg">${msg}</span>`;
+    log.insertBefore(div, log.firstChild);
+    while (log.children.length > MAX_LOG) log.removeChild(log.lastChild);
+  }
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
+
+  function connectWS() {
+    document.getElementById('ws-status').textContent = 'Connecting...';
+    try {
+      ws = new WebSocket(WS_URL);
+    } catch(e) {
+      scheduleReconnect();
+      return;
+    }
+
+    ws.onopen = () => {
+      document.getElementById('ws-status').textContent = '● Connected';
+      document.getElementById('ws-status').style.color = '#10b981';
+      addLog('WebSocket connected to trading engine', 'info');
+      clearTimeout(reconnectTimer);
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        handleWsMessage(msg);
+      } catch(err) {}
+    };
+
+    ws.onclose = () => {
+      document.getElementById('ws-status').textContent = '○ Disconnected';
+      document.getElementById('ws-status').style.color = '#ef4444';
+      addLog('WebSocket disconnected — reconnecting...', 'error');
+      scheduleReconnect();
+    };
+
+    ws.onerror = () => scheduleReconnect();
+  }
+
+  function scheduleReconnect() {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connectWS, 3000);
+  }
+
+  function handleWsMessage(msg) {
+    switch(msg.type) {
+      case 'init':
+        updateStatus(msg.data.status);
+        updatePortfolio(msg.data.portfolio);
+        fetchRiskConfig();
+        fetchPerformance();
+        break;
+      case 'portfolio':
+        updatePortfolio(msg.data);
+        break;
+      case 'signal':
+        addSignalRow(msg.data);
+        addLog(`📊 Signal: ${msg.data.symbol} → ${msg.data.signal.toUpperCase()} (${Math.round(msg.data.confidence*100)}%)`, 'signal');
+        break;
+      case 'trade':
+        addLog(`💹 Trade: ${msg.data.symbol} ${msg.data.side.toUpperCase()} ${fmt(msg.data.quantity,6)} @ ${fmtPrice(msg.data.entry_price)}`, 'trade');
+        fetchPortfolio();
+        break;
+      case 'heartbeat':
+        break;
+      case 'pong':
+        break;
+    }
+  }
+
+  // ── Update Functions ───────────────────────────────────────────────────────
+
+  function updatePortfolio(p) {
+    if (!p) return;
+    document.getElementById('total-value').textContent = fmtUSD(p.total_value);
+    document.getElementById('invested-value').textContent = fmtUSD(p.invested_value);
+
+    const investedPct = p.total_value > 0 ? (p.invested_value / p.total_value * 100) : 0;
+    document.getElementById('invested-bar').style.width = Math.min(investedPct, 100) + '%';
+
+    const pnlEl = document.getElementById('total-pnl');
+    pnlEl.textContent = fmtUSD(p.total_pnl);
+    pnlEl.className = 'val ' + pnlClass(p.total_pnl);
+    document.getElementById('total-pnl-pct').textContent = `${p.total_pnl_pct >= 0 ? '+' : ''}${fmt(p.total_pnl_pct)}% all time`;
+
+    const dailyEl = document.getElementById('daily-pnl');
+    dailyEl.textContent = (p.daily_pnl >= 0 ? '+' : '') + fmtUSD(p.daily_pnl) + ` (${fmt(p.daily_pnl_pct)}%)`;
+    dailyEl.className = pnlClass(p.daily_pnl);
+
+    document.getElementById('open-positions').textContent = (p.open_positions || []).length;
+    updatePositionsTable(p.open_positions || []);
+  }
+
+  function updateStatus(s) {
+    if (!s) return;
+    document.getElementById('cycle-count').textContent = s.cycle_count || 0;
+    document.getElementById('watching-count').textContent = (s.symbols || []).length + ' symbols';
+    const riskEl = document.getElementById('risk-status');
+    if (s.trading_paused) {
+      riskEl.textContent = 'PAUSED';
+      riskEl.className = 'down';
+    } else {
+      riskEl.textContent = 'Active';
+      riskEl.className = 'up';
+    }
+    const modeDot = document.getElementById('mode-dot');
+    const modeLabel = document.getElementById('mode-label');
+    if (s.mode === 'live') {
+      modeDot.className = 'dot live';
+      modeLabel.textContent = '🔴 LIVE TRADING';
+    } else {
+      modeDot.className = 'dot paper';
+      modeLabel.textContent = '📄 Paper Trading';
+    }
+  }
+
+  function updatePositionsTable(positions) {
+    const tbody = document.getElementById('positions-tbody');
+    if (!positions || positions.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:20px">No open positions</td></tr>';
+      return;
+    }
+    tbody.innerHTML = positions.map(p => `
+      <tr>
+        <td><strong>${p.symbol}</strong></td>
+        <td><span class="pill ${p.side}">${p.side.toUpperCase()}</span></td>
+        <td>${fmt(p.quantity, 6)}</td>
+        <td>${fmtPrice(p.entry_price)}</td>
+        <td>${fmtPrice(p.current_price)}</td>
+        <td style="color:var(--red)">${fmtPrice(p.stop_loss)}</td>
+        <td style="color:var(--green)">${fmtPrice(p.take_profit)}</td>
+        <td class="${pnlClass(p.unrealized_pnl)}">${p.unrealized_pnl >= 0 ? '+' : ''}${fmtUSD(p.unrealized_pnl)} (${fmt(p.unrealized_pnl_pct)}%)</td>
+      </tr>
+    `).join('');
+  }
+
+  const signalRows = [];
+  function addSignalRow(sig) {
+    signalRows.unshift(sig);
+    if (signalRows.length > MAX_SIGNALS) signalRows.pop();
+    const tbody = document.getElementById('signals-tbody');
+    tbody.innerHTML = signalRows.map(s => `
+      <tr>
+        <td><strong>${s.symbol}</strong></td>
+        <td><span class="pill ${s.signal}">${s.signal.replace('_',' ').toUpperCase()}</span></td>
+        <td>
+          <div class="progress-bar" style="width:80px">
+            <div class="progress-fill" style="width:${Math.round(s.confidence*100)}%;background:${s.confidence > 0.7 ? 'var(--green)' : 'var(--yellow)'}"></div>
+          </div>
+          <span style="font-size:0.75rem;color:var(--muted)">${Math.round(s.confidence*100)}%</span>
+        </td>
+        <td>${fmtPrice(s.entry_price)}</td>
+        <td style="color:var(--red)">${fmtPrice(s.stop_loss)}</td>
+        <td style="color:var(--green)">${fmtPrice(s.take_profit)}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:0.78rem" title="${s.reasoning}">${s.reasoning}</td>
+      </tr>
+    `).join('');
+  }
+
+  // ── API Calls ──────────────────────────────────────────────────────────────
+
+  async function fetchPortfolio() {
+    try {
+      const r = await fetch(`${API}/api/portfolio`);
+      const p = await r.json();
+      updatePortfolio(p);
+    } catch(e) { addLog('Failed to fetch portfolio', 'error'); }
+  }
+
+  async function fetchPerformance() {
+    try {
+      const r = await fetch(`${API}/api/performance`);
+      const s = await r.json();
+      if (s.message) return; // No trades yet
+      document.getElementById('stat-trades').textContent = s.total_trades || 0;
+      const wr = s.win_rate_pct || 0;
+      const wrEl = document.getElementById('stat-winrate');
+      wrEl.textContent = fmt(wr) + '%';
+      wrEl.className = 'val ' + (wr >= 50 ? 'up' : 'down');
+      document.getElementById('stat-avg-win').textContent = fmtUSD(s.avg_win || 0);
+      document.getElementById('stat-pf').textContent = s.profit_factor === Infinity ? '∞' : fmt(s.profit_factor || 0);
+    } catch(e) {}
+  }
+
+  async function fetchRiskConfig() {
+    try {
+      const r = await fetch(`${API}/api/risk`);
+      const c = await r.json();
+      document.getElementById('r-max-pos').textContent = c.max_position_size_pct + '%';
+      document.getElementById('r-sl').textContent = c.stop_loss_pct + '%';
+      document.getElementById('r-tp').textContent = c.take_profit_pct + '%';
+      document.getElementById('r-daily').textContent = c.max_daily_loss_pct + '%';
+      document.getElementById('r-dd').textContent = c.max_drawdown_pct + '%';
+    } catch(e) {}
+  }
+
+  async function fetchStatus() {
+    try {
+      const r = await fetch(`${API}/api/status`);
+      const s = await r.json();
+      updateStatus(s);
+      fetchPerformance();
+    } catch(e) {}
+  }
+
+  async function resumeTrading() {
+    try {
+      await fetch(`${API}/api/risk/resume`, { method: 'POST' });
+      addLog('▶ Trading resumed by user', 'info');
+      fetchStatus();
+    } catch(e) { addLog('Failed to resume trading', 'error'); }
+  }
+
+  async function stopTrading() {
+    try {
+      await fetch(`${API}/api/trading/stop`, { method: 'POST' });
+      addLog('⏹ Trading stopped by user', 'error');
+    } catch(e) { addLog('Failed to stop trading', 'error'); }
+  }
+
+  async function startTrading() {
+    try {
+      await fetch(`${API}/api/trading/start`, { method: 'POST' });
+      addLog('🚀 Trading started by user', 'trade');
+    } catch(e) { addLog('Failed to start trading', 'error'); }
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+
+  connectWS();
+  fetchPortfolio();
+  fetchRiskConfig();
+  fetchStatus();
+
+  // Poll every 30s as fallback
+  setInterval(() => {
+    fetchPortfolio();
+    fetchPerformance();
+    fetchStatus();
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ping' }));
+    }
+  }, 30000);
+</script>
+</body>
+</html>

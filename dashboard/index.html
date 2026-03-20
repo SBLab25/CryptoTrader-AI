@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CryptoTrader AI — Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #07090f;
+      --panel: #0e1320;
+      --card: #111827;
+      --border: #1f2937;
+      --accent: #3b82f6;
+      --accent2: #8b5cf6;
+      --green: #10b981;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --text: #f1f5f9;
+      --muted: #6b7280;
+      --subtle: #374151;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter','Segoe UI',system-ui,sans-serif; min-height: 100vh; }
+
+    /* ── Topbar ── */
+    .topbar {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex; align-items: stretch; gap: 0;
+      height: 52px;
+    }
+    .topbar-brand { display: flex; align-items: center; gap: 10px; padding-right: 24px; border-right: 1px solid var(--border); }
+    .topbar-brand h1 { font-size: 1rem; font-weight: 800; letter-spacing: -0.5px; }
+    .topbar-brand h1 em { color: var(--accent); font-style: normal; }
+    .tabs { display: flex; align-items: stretch; gap: 0; margin-left: 8px; }
+    .tab {
+      padding: 0 18px;
+      display: flex; align-items: center;
+      font-size: 0.82rem; font-weight: 600; color: var(--muted);
+      cursor: pointer; border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+    .mode-pill {
+      padding: 3px 12px; border-radius: 99px;
+      font-size: 0.72rem; font-weight: 700;
+      background: rgba(245,158,11,0.15); color: var(--yellow);
+    }
+    .mode-pill.live { background: rgba(239,68,68,0.2); color: #fca5a5; }
+    #conn-status { font-size: 0.75rem; }
+
+    /* ── Pages ── */
+    .page { display: none; padding: 20px 24px; }
+    .page.active { display: block; }
+
+    /* ── Grid ── */
+    .grid { display: grid; gap: 16px; }
+    .grid-4 { grid-template-columns: repeat(4, 1fr); }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .col-span-2 { grid-column: span 2; }
+    .col-span-3 { grid-column: span 3; }
+    .col-span-4 { grid-column: span 4; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+    .card-title {
+      font-size: 0.72rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.8px;
+      margin-bottom: 14px;
+    }
+
+    /* ── Metric ── */
+    .metric .val { font-size: 1.9rem; font-weight: 800; line-height: 1; }
+    .metric .sub { font-size: 0.77rem; color: var(--muted); margin-top: 4px; }
+    .metric .change { font-size: 0.8rem; font-weight: 600; margin-top: 6px; }
+    .up { color: var(--green); }
+    .dn { color: var(--red); }
+    .nu { color: var(--yellow); }
+
+    /* ── Table ── */
+    .tbl-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.81rem; }
+    th { color: var(--muted); font-weight: 600; text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: 9px 10px; border-bottom: 1px solid rgba(31,41,55,0.5); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(59,130,246,0.04); }
+    .empty-row td { color: var(--muted); text-align: center; padding: 24px; }
+
+    /* ── Pill badges ── */
+    .pill {
+      display: inline-block; padding: 2px 9px; border-radius: 99px;
+      font-size: 0.69rem; font-weight: 700; white-space: nowrap;
+    }
+    .pill-green { background: rgba(16,185,129,0.15); color: var(--green); }
+    .pill-red { background: rgba(239,68,68,0.15); color: var(--red); }
+    .pill-yellow { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .pill-blue { background: rgba(59,130,246,0.15); color: var(--accent); }
+    .pill-purple { background: rgba(139,92,246,0.15); color: var(--accent2); }
+
+    /* ── Buttons ── */
+    .btn { padding: 7px 14px; border-radius: 8px; border: none; font-weight: 600; font-size: 0.8rem; cursor: pointer; transition: opacity 0.15s; }
+    .btn:hover { opacity: 0.82; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-danger { background: var(--red); color: #fff; }
+    .btn-success { background: var(--green); color: #000; }
+    .btn-ghost { background: var(--subtle); color: var(--text); }
+    .btn-purple { background: var(--accent2); color: #fff; }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    /* ── Progress ── */
+    .pbar { background: var(--border); border-radius: 99px; height: 5px; overflow: hidden; display: inline-block; width: 72px; vertical-align: middle; }
+    .pbar-fill { height: 100%; border-radius: 99px; }
+
+    /* ── Log ── */
+    .log {
+      background: #050810;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      height: 180px;
+      overflow-y: auto;
+      font-family: 'Fira Code','Consolas',monospace;
+      font-size: 0.73rem;
+    }
+    .log-line { padding: 1px 0; }
+    .log-ts { color: var(--muted); margin-right: 6px; }
+    .log-signal { color: #60a5fa; }
+    .log-trade { color: var(--green); }
+    .log-err { color: var(--red); }
+    .log-info { color: #cbd5e1; }
+
+    /* ── Inputs ── */
+    .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    label { font-size: 0.75rem; color: var(--muted); font-weight: 600; }
+    input, select {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 7px;
+      color: var(--text); padding: 6px 10px; font-size: 0.82rem;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+
+    /* ── Risk item ── */
+    .risk-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid rgba(31,41,55,0.6); font-size: 0.82rem; }
+    .risk-row:last-child { border-bottom: none; }
+
+    /* ── Chart container ── */
+    .chart-wrap { position: relative; height: 220px; }
+
+    /* ── Compare table ── */
+    .compare-winner { background: rgba(16,185,129,0.06); }
+
+    /* ── Responsive ── */
+    @media (max-width: 1100px) { .grid-4 { grid-template-columns: repeat(2,1fr); } .col-span-4 { grid-column: span 2; } .col-span-3 { grid-column: span 2; } }
+    @media (max-width: 700px) { .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; } .col-span-2,.col-span-3,.col-span-4 { grid-column: span 1; } .tabs { gap: 0; } .tab { padding: 0 10px; font-size: 0.75rem; } }
+  </style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <span>🤖</span>
+    <h1>Crypto<em>Trader</em> AI</h1>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="showPage('overview')">Overview</div>
+    <div class="tab" onclick="showPage('positions')">Positions</div>
+    <div class="tab" onclick="showPage('signals')">Signals</div>
+    <div class="tab" onclick="showPage('backtest')">Backtest</div>
+    <div class="tab" onclick="showPage('risk')">Risk</div>
+    <div class="tab" onclick="showPage('log')">Log</div>
+  </div>
+  <div class="topbar-right">
+    <span id="conn-status" style="color:var(--muted)">⬤ Connecting</span>
+    <span class="mode-pill" id="mode-pill">📄 Paper</span>
+  </div>
+</div>
+
+<!-- ══ OVERVIEW PAGE ════════════════════════════════════════════════════════ -->
+<div class="page active" id="page-overview">
+  <div class="grid grid-4" style="margin-bottom:16px">
+
+    <div class="card">
+      <div class="card-title">Portfolio Value</div>
+      <div class="metric">
+        <div class="val" id="o-total">$0.00</div>
+        <div class="sub">Total (USDT)</div>
+        <div class="change" id="o-alltime">+0.00% all time</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Today's PnL</div>
+      <div class="metric">
+        <div class="val nu" id="o-daily-pnl">$0.00</div>
+        <div class="sub">Unrealised + Realised</div>
+        <div class="change nu" id="o-daily-pct">0.00%</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Open Positions</div>
+      <div class="metric">
+        <div class="val" id="o-open-pos">0</div>
+        <div class="sub" id="o-max-pos">of 5 max</div>
+        <div class="change" id="o-invested">$0 invested</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Win Rate</div>
+      <div class="metric">
+        <div class="val up" id="o-winrate">—</div>
+        <div class="sub" id="o-trade-count">0 closed trades</div>
+        <div class="change" id="o-pf">PF: —</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <!-- Equity Chart -->
+    <div class="card col-span-2">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:0">Portfolio Equity Curve</div>
+        <div class="btn-group">
+          <button class="btn btn-ghost" onclick="fetchPortfolio()">↻ Refresh</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="equityChart"></canvas></div>
+    </div>
+
+    <!-- Open positions mini table -->
+    <div class="card col-span-2">
+      <div class="card-title">Open Positions</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>Symbol</th><th>Side</th><th>Qty</th><th>Entry</th>
+            <th>Current</th><th>Stop Loss</th><th>Take Profit</th><th>Unrealised PnL</th>
+          </tr></thead>
+          <tbody id="overview-positions">
+            <tr class="empty-row"><td colspan="8">No open positions</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card">
+      <div class="card-title">System Controls</div>
+      <div class="btn-group" style="margin-bottom:10px">
+        <button class="btn btn-success" onclick="startTrading()">▶ Start</button>
+        <button class="btn btn-danger" onclick="stopTrading()">⏹ Stop</button>
+        <button class="btn btn-primary" onclick="resumeRisk()">↩ Resume Risk</button>
+        <button class="btn btn-ghost" onclick="fetchAll()">↻ Refresh All</button>
+      </div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:6px">
+        ⚠️ Always validate in Paper Trading before enabling live trading.
+      </div>
+    </div>
+
+    <!-- Cycle stats -->
+    <div class="card">
+      <div class="card-title">System Status</div>
+      <div class="risk-row"><span>Cycle Count</span><strong id="s-cycles">0</strong></div>
+      <div class="risk-row"><span>Last Cycle</span><strong id="s-last-cycle">—</strong></div>
+      <div class="risk-row"><span>Watching</span><strong id="s-watching">—</strong></div>
+      <div class="risk-row"><span>Risk Engine</span><strong id="s-risk">—</strong></div>
+      <div class="risk-row"><span>Mode</span><strong id="s-mode">—</strong></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ POSITIONS PAGE ══════════════════════════════════════════════════════ -->
+<div class="page" id="page-positions">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:0">Open Positions</div>
+      <button class="btn btn-ghost" onclick="fetchPortfolio()">↻ Refresh</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Symbol</th><th>Side</th><th>Quantity</th><th>Entry Price</th>
+          <th>Current</th><th>Stop Loss</th><th>Take Profit</th>
+          <th>Unrealised PnL</th><th>Opened</th>
+        </tr></thead>
+        <tbody id="positions-table">
+          <tr class="empty-row"><td colspan="9">No open positions</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">Performance Summary</div>
+    <div class="grid grid-4">
+      <div class="metric"><div class="val" id="p-total">0</div><div class="sub">Total Trades</div></div>
+      <div class="metric"><div class="val up" id="p-wins">0</div><div class="sub">Wins</div></div>
+      <div class="metric"><div class="val dn" id="p-losses">0</div><div class="sub">Losses</div></div>
+      <div class="metric"><div class="val" id="p-avgwin">$0</div><div class="sub">Avg Win</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SIGNALS PAGE ════════════════════════════════════════════════════════ -->
+<div class="page" id="page-signals">
+  <div class="card">
+    <div class="card-title">Live Signal Feed (last 20)</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Symbol</th><th>Signal</th><th>Confidence</th>
+          <th>Entry</th><th>Stop Loss</th><th>Take Profit</th><th>AI Reasoning</th>
+        </tr></thead>
+        <tbody id="signals-table">
+          <tr class="empty-row"><td colspan="8">Waiting for signals...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ BACKTEST PAGE ══════════════════════════════════════════════════════ -->
+<div class="page" id="page-backtest">
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-title">Run Backtest</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Symbol</label>
+          <input id="bt-symbol" value="BTC_USDT" style="width:120px" />
+        </div>
+        <div class="form-group">
+          <label>Strategy</label>
+          <select id="bt-strategy">
+            <option value="best">Auto-Select Best</option>
+            <option value="momentum">Momentum</option>
+            <option value="mean_reversion">Mean Reversion</option>
+            <option value="breakout">Breakout</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Market Type</label>
+          <select id="bt-trend">
+            <option value="up">Trending Up</option>
+            <option value="down">Trending Down</option>
+            <option value="ranging">Ranging</option>
+            <option value="volatile">Volatile</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Capital ($)</label>
+          <input id="bt-capital" type="number" value="10000" style="width:100px" />
+        </div>
+        <div class="form-group">
+          <label>Candles</label>
+          <input id="bt-candles" type="number" value="300" style="width:80px" />
+        </div>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="runBacktest()">▶ Run Backtest</button>
+        <button class="btn btn-purple" onclick="compareStrategies()">⚖ Compare All</button>
+      </div>
+      <div id="bt-loading" style="display:none;margin-top:10px;color:var(--muted);font-size:0.82rem">Running backtest...</div>
+    </div>
+
+    <!-- Result Card -->
+    <div class="card" id="bt-result-card" style="display:none">
+      <div class="card-title" id="bt-result-title">Backtest Results</div>
+      <div class="grid grid-2" style="gap:10px;margin-bottom:12px">
+        <div class="metric"><div class="val" id="bt-return" style="font-size:1.4rem">—</div><div class="sub">Total Return</div></div>
+        <div class="metric"><div class="val" id="bt-winrate" style="font-size:1.4rem">—</div><div class="sub">Win Rate</div></div>
+        <div class="metric"><div class="val" style="font-size:1.2rem" id="bt-trades">—</div><div class="sub">Total Trades</div></div>
+        <div class="metric"><div class="val" style="font-size:1.2rem" id="bt-pf">—</div><div class="sub">Profit Factor</div></div>
+        <div class="metric"><div class="val" style="font-size:1.2rem" id="bt-dd">—</div><div class="sub">Max Drawdown</div></div>
+        <div class="metric"><div class="val" style="font-size:1.2rem" id="bt-sharpe">—</div><div class="sub">Sharpe Ratio</div></div>
+      </div>
+    </div>
+
+    <!-- Equity curve chart -->
+    <div class="card col-span-2" id="bt-chart-card" style="display:none">
+      <div class="card-title">Equity Curve</div>
+      <div class="chart-wrap"><canvas id="btChart"></canvas></div>
+    </div>
+
+    <!-- Strategy comparison table -->
+    <div class="card col-span-2" id="bt-compare-card" style="display:none">
+      <div class="card-title">Strategy Comparison</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>Strategy</th><th>Return</th><th>Win Rate</th><th>Trades</th>
+            <th>Profit Factor</th><th>Max DD</th><th>Sharpe</th><th>Final Capital</th>
+          </tr></thead>
+          <tbody id="compare-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RISK PAGE ══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-risk">
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-title">Current Risk Configuration</div>
+      <div id="risk-rows">
+        <div class="risk-row"><span>Max Position Size</span><strong id="r-maxpos">—</strong></div>
+        <div class="risk-row"><span>Stop Loss %</span><strong id="r-sl">—</strong></div>
+        <div class="risk-row"><span>Take Profit %</span><strong id="r-tp">—</strong></div>
+        <div class="risk-row"><span>Max Daily Loss</span><strong id="r-daily">—</strong></div>
+        <div class="risk-row"><span>Max Drawdown</span><strong id="r-dd">—</strong></div>
+        <div class="risk-row"><span>Max Open Positions</span><strong id="r-maxopen">—</strong></div>
+        <div class="risk-row"><span>Base Currency</span><strong id="r-base">—</strong></div>
+        <div class="risk-row"><span>Scan Interval</span><strong id="r-scan">—</strong></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Risk Engine Status</div>
+      <div class="risk-row"><span>Status</span><strong id="re-status">—</strong></div>
+      <div class="risk-row"><span>Trading Mode</span><strong id="re-mode">—</strong></div>
+      <div style="margin-top:16px">
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="resumeRisk()">↩ Resume Trading</button>
+          <button class="btn btn-ghost" onclick="fetchRisk()">↻ Refresh</button>
+        </div>
+      </div>
+      <div style="margin-top:14px; padding: 10px; background: rgba(245,158,11,0.07); border-radius: 8px; border: 1px solid rgba(245,158,11,0.2); font-size:0.78rem; color: var(--yellow);">
+        ⚠️ <strong>Risk Rules:</strong> Every trade requires stop-loss + take-profit. Minimum R:R = 1.5:1.
+        System auto-pauses on daily loss or drawdown limit breach.
+      </div>
+    </div>
+    <div class="card col-span-2">
+      <div class="card-title">Monitored Symbols</div>
+      <div id="symbols-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ LOG PAGE ══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-log">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin-bottom:0">Real-time Activity Log</div>
+      <button class="btn btn-ghost" onclick="clearLog()">Clear</button>
+    </div>
+    <div class="log" id="main-log">
+      <div class="log-line"><span class="log-ts">--:--:--</span><span class="log-info">Connecting to trading engine...</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CHARTS & MAIN JS ══════════════════════════════════════════════════ -->
+<script>
+const API = 'http://localhost:8000';
+const WS_URL = 'ws://localhost:8000/ws';
+
+let ws = null, reconnTimer = null;
+let equityChart = null, btChart = null;
+const signals = [];
+const MAX_SIGNALS = 20, MAX_LOG = 150;
+const equityData = { labels: [], values: [] };
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ── Formatting ─────────────────────────────────────────────────────────────
+const fmt = (n, d=2) => (n===null||n===undefined) ? '—' : Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtUSD = n => '$' + fmt(n, 2);
+const fmtPrice = n => '$' + fmt(n, 4);
+const ts = () => new Date().toTimeString().slice(0,8);
+const pnlCls = v => v > 0 ? 'up' : v < 0 ? 'dn' : 'nu';
+const signalPill = s => {
+  const cls = ['strong_buy','buy'].includes(s) ? 'pill-green' : ['strong_sell','sell'].includes(s) ? 'pill-red' : 'pill-yellow';
+  return `<span class="pill ${cls}">${s.replace('_',' ').toUpperCase()}</span>`;
+};
+
+// ── Logging ────────────────────────────────────────────────────────────────
+function addLog(msg, type='info') {
+  const log = document.getElementById('main-log');
+  const el = document.createElement('div');
+  el.className = 'log-line';
+  el.innerHTML = `<span class="log-ts">${ts()}</span><span class="log-${type}">${msg}</span>`;
+  log.insertBefore(el, log.firstChild);
+  while (log.children.length > MAX_LOG) log.removeChild(log.lastChild);
+}
+function clearLog() { document.getElementById('main-log').innerHTML = ''; }
+
+// ── Equity Chart ───────────────────────────────────────────────────────────
+function initEquityChart() {
+  const ctx = document.getElementById('equityChart').getContext('2d');
+  equityChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: equityData.labels,
+      datasets: [{
+        label: 'Portfolio Value',
+        data: equityData.values,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { display: false },
+        y: {
+          grid: { color: 'rgba(31,41,55,0.8)' },
+          ticks: { color: '#6b7280', callback: v => '$' + v.toLocaleString() }
+        }
+      }
+    }
+  });
+}
+
+function pushEquityPoint(value) {
+  const label = new Date().toTimeString().slice(0,5);
+  equityData.labels.push(label);
+  equityData.values.push(value);
+  if (equityData.labels.length > 200) {
+    equityData.labels.shift();
+    equityData.values.shift();
+  }
+  if (equityChart) equityChart.update('none');
+}
+
+// ── Update Functions ───────────────────────────────────────────────────────
+function updatePortfolio(p) {
+  if (!p) return;
+  const sign = p.total_pnl >= 0 ? '+' : '';
+  document.getElementById('o-total').textContent = fmtUSD(p.total_value);
+  document.getElementById('o-alltime').textContent = `${sign}${fmt(p.total_pnl_pct)}% all time`;
+  document.getElementById('o-alltime').className = 'change ' + pnlCls(p.total_pnl);
+
+  const dailySign = p.daily_pnl >= 0 ? '+' : '';
+  document.getElementById('o-daily-pnl').textContent = fmtUSD(p.daily_pnl);
+  document.getElementById('o-daily-pnl').className = 'val ' + pnlCls(p.daily_pnl);
+  document.getElementById('o-daily-pct').textContent = `${dailySign}${fmt(p.daily_pnl_pct)}%`;
+  document.getElementById('o-daily-pct').className = 'change ' + pnlCls(p.daily_pnl);
+
+  document.getElementById('o-open-pos').textContent = (p.open_positions||[]).length;
+  document.getElementById('o-invested').textContent = fmtUSD(p.invested_value) + ' invested';
+
+  updatePositionsTables(p.open_positions || []);
+  pushEquityPoint(p.total_value);
+}
+
+function updatePositionsTables(positions) {
+  const overviewEl = document.getElementById('overview-positions');
+  const posEl = document.getElementById('positions-table');
+
+  if (!positions || positions.length === 0) {
+    const empty = '<tr class="empty-row"><td colspan="9">No open positions</td></tr>';
+    overviewEl.innerHTML = '<tr class="empty-row"><td colspan="8">No open positions</td></tr>';
+    posEl.innerHTML = empty;
+    return;
+  }
+
+  const rows = positions.map(p => {
+    const side = p.side === 'buy'
+      ? '<span class="pill pill-green">BUY</span>'
+      : '<span class="pill pill-red">SELL</span>';
+    const pnlClass = pnlCls(p.unrealized_pnl);
+    const pnlStr = `<span class="${pnlClass}">${p.unrealized_pnl >= 0 ? '+' : ''}${fmtUSD(p.unrealized_pnl)} (${fmt(p.unrealized_pnl_pct)}%)</span>`;
+    const opened = p.opened_at ? new Date(p.opened_at).toLocaleTimeString() : '—';
+    return `<tr>
+      <td><strong>${p.symbol}</strong></td><td>${side}</td>
+      <td>${fmt(p.quantity,6)}</td><td>${fmtPrice(p.entry_price)}</td>
+      <td>${fmtPrice(p.current_price)}</td>
+      <td style="color:var(--red)">${fmtPrice(p.stop_loss)}</td>
+      <td style="color:var(--green)">${fmtPrice(p.take_profit)}</td>
+      <td>${pnlStr}</td><td style="color:var(--muted)">${opened}</td>
+    </tr>`;
+  }).join('');
+
+  overviewEl.innerHTML = rows.replace(/<td>[^<]*<\/td>$/, ''); // trim last col for overview
+  posEl.innerHTML = rows;
+}
+
+function updateStatus(s) {
+  if (!s) return;
+  document.getElementById('s-cycles').textContent = s.cycle_count || 0;
+  document.getElementById('s-last-cycle').textContent = s.last_cycle_at
+    ? new Date(s.last_cycle_at).toLocaleTimeString() : '—';
+  document.getElementById('s-watching').textContent = (s.symbols||[]).join(', ') || '—';
+  document.getElementById('s-mode').textContent = s.mode || '—';
+
+  const riskEl = document.getElementById('s-risk');
+  riskEl.textContent = s.trading_paused ? 'PAUSED' : 'Active';
+  riskEl.className = s.trading_paused ? 'dn' : 'up';
+
+  const modePill = document.getElementById('mode-pill');
+  document.getElementById('o-max-pos').textContent = `of ${s.max_positions || 5} max`;
+  if (s.mode === 'live') {
+    modePill.textContent = '💰 LIVE'; modePill.classList.add('live');
+  } else {
+    modePill.textContent = '📄 Paper'; modePill.classList.remove('live');
+  }
+  document.getElementById('re-mode').textContent = s.mode || '—';
+}
+
+function updatePerformance(s) {
+  if (!s || s.message) return;
+  document.getElementById('o-winrate').textContent = fmt(s.win_rate_pct) + '%';
+  document.getElementById('o-winrate').className = 'val ' + (s.win_rate_pct >= 50 ? 'up' : 'dn');
+  document.getElementById('o-trade-count').textContent = s.total_trades + ' closed trades';
+  document.getElementById('o-pf').textContent = 'PF: ' + (s.profit_factor === Infinity ? '∞' : fmt(s.profit_factor));
+  document.getElementById('p-total').textContent = s.total_trades || 0;
+  document.getElementById('p-wins').textContent = s.winning_trades || 0;
+  document.getElementById('p-losses').textContent = (s.total_trades||0) - (s.winning_trades||0);
+  document.getElementById('p-avgwin').textContent = fmtUSD(s.avg_win);
+}
+
+function updateRisk(r) {
+  document.getElementById('r-maxpos').textContent = r.max_position_size_pct + '%';
+  document.getElementById('r-sl').textContent = r.stop_loss_pct + '%';
+  document.getElementById('r-tp').textContent = r.take_profit_pct + '%';
+  document.getElementById('r-daily').textContent = r.max_daily_loss_pct + '%';
+  document.getElementById('r-dd').textContent = r.max_drawdown_pct + '%';
+  document.getElementById('r-maxopen').textContent = r.max_open_positions;
+  const paused = r.is_paused;
+  const el = document.getElementById('re-status');
+  el.textContent = paused ? '⛔ PAUSED' : '✅ Active';
+  el.className = paused ? 'dn' : 'up';
+}
+
+function updateSignalsTable() {
+  const el = document.getElementById('signals-table');
+  if (!signals.length) { el.innerHTML = '<tr class="empty-row"><td colspan="8">Waiting for signals...</td></tr>'; return; }
+  el.innerHTML = signals.map(s => {
+    const conf = Math.round(s.confidence * 100);
+    const barColor = s.confidence > 0.7 ? 'var(--green)' : 'var(--yellow)';
+    return `<tr>
+      <td style="color:var(--muted)">${new Date(s.timestamp||Date.now()).toLocaleTimeString()}</td>
+      <td><strong>${s.symbol}</strong></td>
+      <td>${signalPill(s.signal)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="pbar"><div class="pbar-fill" style="width:${conf}%;background:${barColor}"></div></div>
+          <span style="font-size:0.75rem;color:var(--muted)">${conf}%</span>
+        </div>
+      </td>
+      <td>${fmtPrice(s.entry_price)}</td>
+      <td style="color:var(--red)">${fmtPrice(s.stop_loss)}</td>
+      <td style="color:var(--green)">${fmtPrice(s.take_profit)}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:0.76rem" title="${s.reasoning||''}">${s.reasoning||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── WebSocket ───────────────────────────────────────────────────────────────
+function connectWS() {
+  const el = document.getElementById('conn-status');
+  el.textContent = '⬤ Connecting'; el.style.color = 'var(--yellow)';
+  try { ws = new WebSocket(WS_URL); } catch { scheduleReconnect(); return; }
+
+  ws.onopen = () => {
+    el.textContent = '⬤ Connected'; el.style.color = 'var(--green)';
+    addLog('WebSocket connected to trading engine', 'info');
+    clearTimeout(reconnTimer);
+  };
+  ws.onmessage = e => {
+    try { handleMsg(JSON.parse(e.data)); } catch {}
+  };
+  ws.onclose = ws.onerror = () => {
+    el.textContent = '⬤ Offline'; el.style.color = 'var(--red)';
+    addLog('Disconnected — retrying...', 'err');
+    scheduleReconnect();
+  };
+}
+function scheduleReconnect() { clearTimeout(reconnTimer); reconnTimer = setTimeout(connectWS, 3500); }
+
+function handleMsg(msg) {
+  switch (msg.type) {
+    case 'init':
+      updateStatus(msg.data.status);
+      updatePortfolio(msg.data.portfolio);
+      fetchRisk(); fetchPerformance();
+      break;
+    case 'portfolio': updatePortfolio(msg.data); break;
+    case 'signal':
+      signals.unshift({...msg.data, timestamp: Date.now()});
+      if (signals.length > MAX_SIGNALS) signals.pop();
+      updateSignalsTable();
+      addLog(`📊 Signal: ${msg.data.symbol} → ${msg.data.signal.toUpperCase()} (${Math.round(msg.data.confidence*100)}%)`, 'signal');
+      break;
+    case 'trade':
+      const t = msg.data;
+      addLog(`💹 Trade: ${t.symbol} ${t.side.toUpperCase()} ${fmt(t.quantity,6)} @ ${fmtPrice(t.entry_price)}`, 'trade');
+      fetchPortfolio(); fetchPerformance();
+      break;
+  }
+}
+
+// ── API Calls ───────────────────────────────────────────────────────────────
+async function apiFetch(path, opts={}) {
+  try { const r = await fetch(API + path, opts); return await r.json(); } catch { return null; }
+}
+
+async function fetchPortfolio() {
+  const p = await apiFetch('/api/portfolio');
+  if (p) updatePortfolio(p);
+}
+async function fetchPerformance() {
+  const s = await apiFetch('/api/performance');
+  if (s) updatePerformance(s);
+}
+async function fetchRisk() {
+  const r = await apiFetch('/api/risk');
+  if (r) updateRisk(r);
+  const cfg = await apiFetch('/api/config');
+  if (cfg) {
+    document.getElementById('r-base').textContent = cfg.base_currency;
+    document.getElementById('r-scan').textContent = cfg.scan_interval_seconds + 's';
+    const symEl = document.getElementById('symbols-list');
+    symEl.innerHTML = (cfg.symbols||[]).map(s => `<span class="pill pill-blue">${s}</span>`).join('');
+  }
+}
+async function fetchStatus() {
+  const s = await apiFetch('/api/status');
+  if (s) updateStatus(s);
+}
+async function fetchAll() { fetchPortfolio(); fetchPerformance(); fetchStatus(); fetchRisk(); }
+
+async function startTrading() {
+  await apiFetch('/api/trading/start', { method: 'POST' });
+  addLog('🚀 Start command sent', 'trade');
+}
+async function stopTrading() {
+  await apiFetch('/api/trading/stop', { method: 'POST' });
+  addLog('⏹ Stop command sent', 'err');
+}
+async function resumeRisk() {
+  await apiFetch('/api/risk/resume', { method: 'POST' });
+  addLog('↩ Risk engine resumed', 'info');
+  fetchStatus();
+}
+
+// ── Backtest ─────────────────────────────────────────────────────────────────
+async function runBacktest() {
+  const loading = document.getElementById('bt-loading');
+  loading.style.display = 'block';
+  document.getElementById('bt-result-card').style.display = 'none';
+  document.getElementById('bt-chart-card').style.display = 'none';
+  document.getElementById('bt-compare-card').style.display = 'none';
+
+  const payload = {
+    symbol: document.getElementById('bt-symbol').value,
+    strategy: document.getElementById('bt-strategy').value,
+    initial_capital: +document.getElementById('bt-capital').value,
+  };
+  const mock = {
+    n_candles: +document.getElementById('bt-candles').value,
+    trend: document.getElementById('bt-trend').value,
+    start_price: 50000,
+  };
+
+  const result = await apiFetch(`/api/backtest?mock.n_candles=${mock.n_candles}&mock.trend=${mock.trend}&mock.start_price=${mock.start_price}`,
+    { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+
+  loading.style.display = 'none';
+
+  if (!result) { addLog('Backtest API error', 'err'); return; }
+
+  // Show result card
+  const retPct = result.total_return_pct;
+  document.getElementById('bt-result-title').textContent = `Results — ${result.symbol} [${result.strategy}]`;
+  document.getElementById('bt-return').textContent = (retPct >= 0 ? '+' : '') + fmt(retPct) + '%';
+  document.getElementById('bt-return').className = 'val ' + pnlCls(retPct);
+  document.getElementById('bt-winrate').textContent = fmt(result.win_rate_pct) + '%';
+  document.getElementById('bt-trades').textContent = result.total_trades;
+  document.getElementById('bt-pf').textContent = result.profit_factor ?? '—';
+  document.getElementById('bt-dd').textContent = fmt(result.max_drawdown_pct) + '%';
+  document.getElementById('bt-sharpe').textContent = result.sharpe_ratio ?? '—';
+  document.getElementById('bt-result-card').style.display = '';
+
+  // Draw equity curve
+  if (result.equity_curve && result.equity_curve.length > 1) {
+    document.getElementById('bt-chart-card').style.display = '';
+    const ctx = document.getElementById('btChart').getContext('2d');
+    if (btChart) btChart.destroy();
+    const color = result.final_capital >= result.initial_capital ? '#10b981' : '#ef4444';
+    btChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: result.equity_curve.map((_,i) => i),
+        datasets: [{
+          label: 'Equity',
+          data: result.equity_curve,
+          borderColor: color,
+          backgroundColor: color + '18',
+          fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { grid: { color: 'rgba(31,41,55,0.8)' }, ticks: { color: '#6b7280', callback: v => '$' + v.toLocaleString() } }
+        }
+      }
+    });
+  }
+
+  addLog(`✅ Backtest done: ${result.total_return_pct >= 0 ? '+' : ''}${fmt(result.total_return_pct)}% return, ${result.win_rate_pct}% win rate`, 'trade');
+}
+
+async function compareStrategies() {
+  const loading = document.getElementById('bt-loading');
+  loading.textContent = 'Comparing all strategies...';
+  loading.style.display = 'block';
+
+  const mock = {
+    n_candles: +document.getElementById('bt-candles').value,
+    trend: document.getElementById('bt-trend').value,
+    start_price: 50000,
+  };
+
+  const results = await apiFetch(
+    `/api/backtest/compare`,
+    { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(mock) }
+  );
+
+  loading.style.display = 'none';
+  loading.textContent = 'Running backtest...';
+
+  if (!results) { addLog('Compare API error', 'err'); return; }
+
+  document.getElementById('bt-compare-card').style.display = '';
+  const tbody = document.getElementById('compare-table');
+  const strategyNames = { momentum: 'Momentum', mean_reversion: 'Mean Reversion', breakout: 'Breakout', best: 'Auto-Best' };
+
+  // Find best return
+  const entries = Object.entries(results);
+  const maxReturn = Math.max(...entries.map(([,r]) => r.total_return_pct));
+
+  tbody.innerHTML = entries.map(([key, r]) => {
+    const isWinner = r.total_return_pct === maxReturn;
+    const retPct = r.total_return_pct;
+    return `<tr class="${isWinner ? 'compare-winner' : ''}">
+      <td><strong>${strategyNames[key] || key}</strong> ${isWinner ? '👑' : ''}</td>
+      <td class="${pnlCls(retPct)}">${retPct >= 0 ? '+' : ''}${fmt(retPct)}%</td>
+      <td>${fmt(r.win_rate_pct)}%</td>
+      <td>${r.total_trades}</td>
+      <td>${r.profit_factor ?? '—'}</td>
+      <td class="dn">${fmt(r.max_drawdown_pct)}%</td>
+      <td>${r.sharpe_ratio ?? '—'}</td>
+      <td>${fmtUSD(r.final_capital)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+initEquityChart();
+connectWS();
+fetchAll();
+
+setInterval(() => {
+  fetchPortfolio();
+  fetchPerformance();
+  fetchStatus();
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:'ping'}));
+}, 30000);
+</script>
+</body>
+</html>
