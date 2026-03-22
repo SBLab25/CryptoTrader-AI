@@ -1,42 +1,61 @@
 # File: migrations/env.py
 """
-Alembic environment configuration for async SQLAlchemy.
-Supports both sync (offline) and async (online) migration modes.
+Alembic migration environment.
+Uses synchronous engine for migrations — this is the correct approach
+since Alembic's upgrade/downgrade commands are CLI tools, not async servers.
+Works reliably on Windows, macOS and Linux.
 """
-import asyncio
 import os
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
-from sqlalchemy import pool
-from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
-
+from sqlalchemy import engine_from_config, pool
 from alembic import context
 
-# Load models so Alembic can auto-detect schema changes
+# Make sure the project root is on sys.path so 'src' can be imported
+PROJECT_ROOT = str(Path(__file__).parent.parent)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# Import all models so Alembic can see the full schema
 from src.db.database import Base
-import src.db.database  # noqa — ensure all models are imported
+import src.db.database  # noqa: F401 — registers all ORM models
 
 config = context.config
 
-# Override DB URL from environment if set
-if os.getenv("DATABASE_URL"):
-    db_url = os.getenv("DATABASE_URL")
-    if db_url.startswith("sqlite:///"):
-        db_url = db_url.replace("sqlite:///", "sqlite+aiosqlite:///")
-    elif db_url.startswith("postgresql://"):
-        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
-    config.set_main_option("sqlalchemy.url", db_url)
-
+# Wire up Python logging from alembic.ini
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
 
+def get_url() -> str:
+    """
+    Return the sync (non-async) database URL for Alembic.
+    Alembic uses a regular synchronous engine — we strip the async driver prefix.
+    """
+    # Prefer DATABASE_URL env var if set
+    url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url", "")
+
+    # Strip async driver prefixes → use plain sync drivers
+    url = url.replace("sqlite+aiosqlite:///", "sqlite:///")
+    url = url.replace("postgresql+asyncpg://", "postgresql://")
+
+    # Default fallback
+    if not url:
+        url = "sqlite:///./trading.db"
+
+    return url
+
+
 def run_migrations_offline() -> None:
-    """Run migrations without a live DB connection (generates SQL script)."""
-    url = config.get_main_option("sqlalchemy.url")
+    """
+    Offline mode — generate a .sql migration script without connecting to the DB.
+    Run with: alembic upgrade head --sql
+    """
+    url = get_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -47,25 +66,29 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
-    with context.begin_transaction():
-        context.run_migrations()
+def run_migrations_online() -> None:
+    """
+    Online mode — connect to the database and apply migrations directly.
+    Run with: alembic upgrade head
+    """
+    url = get_url()
 
-
-async def run_async_migrations() -> None:
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+    # Build a plain synchronous engine
+    connectable = engine_from_config(
+        {"sqlalchemy.url": url},
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-    await connectable.dispose()
 
-
-def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            # SQLite-specific: needed to support ALTER TABLE operations
+            render_as_batch=True,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
 
 
 if context.is_offline_mode():
