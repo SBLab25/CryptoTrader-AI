@@ -655,7 +655,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-
+*Made with claude*
 *Trade responsibly. This is not financial advice.*
 
 </div>
