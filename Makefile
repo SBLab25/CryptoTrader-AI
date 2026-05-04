@@ -79,18 +79,18 @@ test-integration:
 	pytest tests/integration/ -v
 
 test-cov:
-	pytest tests/unit/ --cov=app --cov-report=term-missing --cov-report=html
+	pytest tests/unit/ --cov=src --cov-report=term-missing --cov-report=html
 	@echo "Coverage report: htmlcov/index.html"
 
 # ── Code Quality ──────────────────────────────────────────────────────────────
 lint:
-	ruff check app/ tests/
+	ruff check src/ tests/
 
 format:
-	ruff format app/ tests/
+	ruff format src/ tests/
 
 typecheck:
-	mypy app/ --ignore-missing-imports
+	mypy src/ --ignore-missing-imports
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 docker-up:

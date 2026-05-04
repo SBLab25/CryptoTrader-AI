@@ -238,7 +238,7 @@ class BacktestEngine:
         """
         strategy_fn = STRATEGY_MAP.get(strategy, select_best_strategy)
 
-        capital = self.initial_capital
+        capital = float(self.initial_capital)
         open_positions: List[dict] = []
         closed_trades: List[BacktestTrade] = []
         equity_curve: List[float] = [capital]
@@ -371,8 +371,8 @@ class BacktestEngine:
             timeframe=timeframe,
             start_date=ts_to_date(start_ts),
             end_date=ts_to_date(end_ts),
-            initial_capital=self.initial_capital,
-            final_capital=round(capital, 4),
+            initial_capital=float(self.initial_capital),
+            final_capital=float(round(capital, 4)),
             trades=closed_trades,
             equity_curve=equity_curve,
         )

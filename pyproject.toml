@@ -48,7 +48,7 @@ trader-cli = "scripts.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*"]
+include = ["src*"]
 
 # ── Ruff (linter) ────────────────────────────────────────────────────────────
 [tool.ruff]
@@ -95,8 +95,8 @@ addopts = "-v --tb=short"
 
 # ── Coverage ──────────────────────────────────────────────────────────────────
 [tool.coverage.run]
-source = ["app"]
-omit = ["app/main.py", "migrations/*", "tests/*"]
+source = ["src"]
+omit = ["src/core/server.py", "migrations/*", "tests/*"]
 
 [tool.coverage.report]
 show_missing = true

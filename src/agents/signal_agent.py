@@ -75,10 +75,16 @@ Rules:
 
 def _parse_response(raw: str, fallback_price: float) -> dict:
     text = raw.strip()
-    for fence in ["```json", "```JSON", "```"]:
-        if fence in text:
-            parts = text.split(fence)
-            text = parts[1] if len(parts) > 2 else parts[-1]
+    if "```" in text:
+        fenced = text[text.find("```") + 3:]
+        first_newline = fenced.find("\n")
+        if first_newline != -1:
+            language = fenced[:first_newline].strip()
+            if language and "{" not in language:
+                fenced = fenced[first_newline + 1:]
+        fence_end = fenced.find("```")
+        text = fenced[:fence_end] if fence_end != -1 else fenced
+        text = text.strip()
     start, end = text.find("{"), text.rfind("}") + 1
     if start != -1 and end > start:
         text = text[start:end]

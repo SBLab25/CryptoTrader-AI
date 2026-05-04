@@ -269,28 +269,9 @@ class TestSignalParser:
     """Test the JSON parsing logic used in signal_agent.py."""
 
     def _parse(self, raw: str, price: float = 50000.0):
-        import json
+        from src.agents.signal_agent import _parse_response
 
-        def parse_response(raw_text, fallback_price):
-            text = raw_text.strip()
-            for fence in ["```json", "```JSON", "```"]:
-                if fence in text:
-                    parts = text.split(fence)
-                    text = parts[1] if len(parts) > 2 else parts[-1]
-            start, end = text.find("{"), text.rfind("}") + 1
-            if start != -1 and end > start:
-                text = text[start:end]
-            try:
-                return json.loads(text)
-            except json.JSONDecodeError:
-                return {
-                    "signal": "neutral", "confidence": 0.0,
-                    "suggested_entry": fallback_price,
-                    "suggested_stop_loss": fallback_price * 0.98,
-                    "suggested_take_profit": fallback_price * 1.04,
-                }
-
-        return parse_response(raw, price)
+        return _parse_response(raw, price)
 
     _GOOD = ('{"signal":"buy","confidence":0.8,"reasoning":"bullish",'
              '"key_factors":[],"suggested_entry":100,'

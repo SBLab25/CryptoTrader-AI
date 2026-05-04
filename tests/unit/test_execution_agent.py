@@ -187,7 +187,7 @@ class TestDailyScheduler:
         scheduler._tasks[0].last_run = None
 
         # Manually call _tick with mocked time
-        with patch('app.utils.scheduler.datetime') as mock_dt:
+        with patch('src.utils.scheduler.datetime') as mock_dt:
             mock_dt.utcnow.return_value = midnight
             # Test is_due
             assert scheduler._tasks[0].is_due(midnight)
@@ -223,7 +223,7 @@ class TestDailyScheduler:
 
         now = datetime(2025, 1, 1, 0, 0, 0)
         # Should not raise
-        with patch('app.utils.scheduler.datetime') as mock_dt:
+        with patch('src.utils.scheduler.datetime') as mock_dt:
             mock_dt.utcnow.return_value = now
             await scheduler._tick()
 
