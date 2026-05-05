@@ -71,6 +71,18 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", env="API_HOST")
     api_port: int = Field(default=8000, env="API_PORT")
     secret_key: str = Field(default="dev-secret-key", env="SECRET_KEY")
+    jwt_secret_key: str = Field(default="", env="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
+    jwt_access_token_expire_minutes: int = Field(default=30, env="JWT_ACCESS_TOKEN_EXPIRE_MINUTES")
+    jwt_refresh_token_expire_days: int = Field(default=7, env="JWT_REFRESH_TOKEN_EXPIRE_DAYS")
+    cors_allowed_origins: str = Field(
+        default="http://localhost:3000,http://127.0.0.1:3000",
+        env="CORS_ALLOWED_ORIGINS",
+    )
+    environment: str = Field(default="development", env="ENVIRONMENT")
+    debug: bool = Field(default=False, env="DEBUG")
+    vault_addr: str = Field(default="", env="VAULT_ADDR")
+    vault_token: str = Field(default="", env="VAULT_TOKEN")
 
     # Notifications
     telegram_bot_token: str = Field(default="", env="TELEGRAM_BOT_TOKEN")
@@ -98,6 +110,14 @@ class Settings(BaseSettings):
             "ollama": "no-key-needed",
         }
         return key_map.get(self.llm_provider.lower(), "")
+
+    @property
+    def cors_allowed_origins_list(self) -> List[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
+
+    @property
+    def jwt_signing_key(self) -> str:
+        return self.jwt_secret_key or self.secret_key
 
     class Config:
         env_file = ".env"

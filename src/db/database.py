@@ -9,6 +9,7 @@ setups). Uses classic Column() style instead — works on all platforms
 and all Python 3.10+ / SQLAlchemy 2.x versions.
 """
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import AsyncGenerator, Optional, List
 
@@ -151,6 +152,8 @@ async def init_db() -> None:
         _engine, class_=AsyncSession, expire_on_commit=False
     )
 
+    import src.db.models  # noqa: F401
+
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -165,6 +168,19 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
             await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+@asynccontextmanager
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Context-manager form of the DB session for non-FastAPI callers."""
+    if _session_factory is None:
+        await init_db()
+    async with _session_factory() as session:
+        try:
+            yield session
         except Exception:
             await session.rollback()
             raise

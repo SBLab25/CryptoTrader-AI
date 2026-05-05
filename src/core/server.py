@@ -1,32 +1,31 @@
-# File: src/core/server.py
-"""
-FastAPI Main Application
-REST API + WebSocket for real-time dashboard updates
-"""
+"""FastAPI application with Phase 1 auth and protected API routes."""
+
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from typing import List, Set
+from typing import Set
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 from src.agents.orchestrator import TradingOrchestrator
-from src.core.models import TradeSignal, Trade, Portfolio
-from src.risk.engine import risk_engine
-from src.core.config import settings
-from src.utils.logger import get_logger
-from src.db.database import init_db, close_db, get_session
-from src.notifications.telegram import notifier
+from src.api.auth import auth_router, get_current_user
 from src.api.backtest_routes import router as backtest_router
+from src.api.middleware.cors import register_cors
+from src.api.middleware.rate_limiter import register_rate_limiter
 from src.api.routes.history import router as history_router
 from src.api.routes.llm_routes import router as llm_router
+from src.core.config import settings
+from src.core.models import Portfolio, Trade, TradeSignal
+from src.db.database import close_db, init_db
+from src.notifications.telegram import notifier
+from src.risk.engine import risk_engine
+from src.utils.logger import get_logger
 from src.utils.scheduler import build_scheduler
 
 logger = get_logger(__name__)
 
-# ---- WebSocket Connection Manager ----
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
@@ -52,133 +51,90 @@ class ConnectionManager:
 
 ws_manager = ConnectionManager()
 orchestrator = TradingOrchestrator()
+scheduler = None
+protected_api = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
 
-# ---- Event Callbacks (for live broadcasting) ----
 async def on_signal(signal: TradeSignal):
-    await ws_manager.broadcast({
-        "type": "signal",
-        "data": signal.model_dump(mode="json"),
-    })
+    await ws_manager.broadcast({"type": "signal", "data": signal.model_dump(mode="json")})
 
 
 async def on_trade(trade: Trade):
-    await ws_manager.broadcast({
-        "type": "trade",
-        "data": trade.model_dump(mode="json"),
-    })
+    await ws_manager.broadcast({"type": "trade", "data": trade.model_dump(mode="json")})
 
 
 async def on_portfolio_update(portfolio: Portfolio):
-    await ws_manager.broadcast({
-        "type": "portfolio",
-        "data": portfolio.model_dump(mode="json"),
-    })
+    await ws_manager.broadcast({"type": "portfolio", "data": portfolio.model_dump(mode="json")})
 
 
-# ---- App Lifespan ----
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Init database
     await init_db()
 
-    # Register callbacks
-    orchestrator.on_signal(on_signal)
-    orchestrator.on_trade(on_trade)
-    orchestrator.on_portfolio_update(on_portfolio_update)
+    task = None
+    sched_task = None
 
-    # Start trading loop in background
-    task = asyncio.create_task(orchestrator.start())
+    if app.state.start_background:
+        orchestrator.on_signal(on_signal)
+        orchestrator.on_trade(on_trade)
+        orchestrator.on_portfolio_update(on_portfolio_update)
 
-    # Start daily scheduler
-    scheduler = build_scheduler(
-        portfolio_agent=orchestrator.portfolio_agent,
-        risk_engine=risk_engine,
-        notifier=notifier,
-        ws_broadcast_fn=ws_manager.broadcast,
-    )
-    sched_task = asyncio.create_task(scheduler.start())
-    logger.info("✅ Trading orchestrator started in background")
+        task = asyncio.create_task(orchestrator.start())
 
-    # Notify system start
-    await notifier.alert_system_start(
-        settings.trading_mode,
-        settings.symbol_list,
-    )
+        global scheduler
+        scheduler = build_scheduler(
+            portfolio_agent=orchestrator.portfolio_agent,
+            risk_engine=risk_engine,
+            notifier=notifier,
+            ws_broadcast_fn=ws_manager.broadcast,
+        )
+        sched_task = asyncio.create_task(scheduler.start())
+        logger.info("Trading orchestrator started in background")
+
+        await notifier.alert_system_start(settings.trading_mode, settings.symbol_list)
+
     yield
-    # Shutdown
-    await orchestrator.stop()
-    await scheduler.stop()
-    task.cancel()
-    sched_task.cancel()
+
+    if app.state.start_background:
+        await orchestrator.stop()
+        if scheduler is not None:
+            await scheduler.stop()
+        if task is not None:
+            task.cancel()
+        if sched_task is not None:
+            sched_task.cancel()
+
     await close_db()
     await notifier.close()
-    logger.info("🛑 Trading orchestrator stopped")
+    logger.info("Trading orchestrator stopped")
 
 
-# ---- FastAPI App ----
-app = FastAPI(
-    title="Multi-Agent Crypto Trading System",
-    description="AI-powered crypto trading with real-time analysis and risk management",
-    version="1.0.0",
-    lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(backtest_router)
-app.include_router(history_router)
-app.include_router(llm_router)
-
-
-# ---- REST Endpoints ----
-
-@app.get("/", tags=["Health"])
-async def root():
-    return {
-        "status": "running",
-        "mode": settings.trading_mode,
-        "version": "1.0.0",
-    }
-
-
-@app.get("/api/status", tags=["System"])
+@protected_api.get("/status", tags=["System"])
 async def get_status():
-    """Get current system status"""
     return orchestrator.get_status()
 
 
-@app.get("/api/portfolio", tags=["Portfolio"])
+@protected_api.get("/portfolio", tags=["Portfolio"])
 async def get_portfolio():
-    """Get current portfolio snapshot"""
     prices = orchestrator.market_analyst.get_current_prices()
     portfolio = orchestrator.portfolio_agent.get_portfolio_snapshot(prices)
     return portfolio.model_dump(mode="json")
 
 
-@app.get("/api/performance", tags=["Portfolio"])
+@protected_api.get("/performance", tags=["Portfolio"])
 async def get_performance():
-    """Get trading performance statistics"""
     return orchestrator.portfolio_agent.get_performance_stats()
 
 
-@app.get("/api/positions", tags=["Portfolio"])
+@protected_api.get("/positions", tags=["Portfolio"])
 async def get_positions():
-    """Get open positions"""
     prices = orchestrator.market_analyst.get_current_prices()
     portfolio = orchestrator.portfolio_agent.get_portfolio_snapshot(prices)
-    return [p.model_dump(mode="json") for p in portfolio.open_positions]
+    return [position.model_dump(mode="json") for position in portfolio.open_positions]
 
 
-@app.get("/api/risk", tags=["Risk"])
+@protected_api.get("/risk", tags=["Risk"])
 async def get_risk_status():
-    """Get risk engine status"""
     return {
         "is_paused": risk_engine.is_paused,
         "max_position_size_pct": settings.max_position_size_pct,
@@ -190,41 +146,36 @@ async def get_risk_status():
     }
 
 
-@app.post("/api/risk/resume", tags=["Risk"])
+@protected_api.post("/risk/resume", tags=["Risk"])
 async def resume_trading():
-    """Manually resume trading if paused"""
     risk_engine.resume_trading()
     return {"status": "resumed"}
 
 
-@app.post("/api/trading/stop", tags=["System"])
+@protected_api.post("/trading/stop", tags=["System"])
 async def stop_trading():
-    """Stop the trading loop"""
     await orchestrator.stop()
     return {"status": "stopped"}
 
 
-@app.post("/api/trading/start", tags=["System"])
+@protected_api.post("/trading/start", tags=["System"])
 async def start_trading(background_tasks: BackgroundTasks):
-    """Start the trading loop if not running"""
     if not orchestrator.is_running:
         background_tasks.add_task(orchestrator.start)
         return {"status": "started"}
     return {"status": "already_running"}
 
 
-@app.get("/api/market/{symbol}", tags=["Market"])
+@protected_api.get("/market/{symbol}", tags=["Market"])
 async def get_market_data(symbol: str):
-    """Get cached market data for a symbol"""
     data = orchestrator.market_analyst.get_cached_market_data(symbol.upper())
     if not data:
         raise HTTPException(status_code=404, detail=f"No data for {symbol}")
     return data.model_dump(mode="json")
 
 
-@app.get("/api/config", tags=["Config"])
+@protected_api.get("/config", tags=["Config"])
 async def get_config():
-    """Get current trading configuration (safe — no secrets)"""
     return {
         "trading_mode": settings.trading_mode,
         "symbols": settings.symbol_list,
@@ -238,53 +189,81 @@ async def get_config():
     }
 
 
-@app.get("/api/execution/stats", tags=["System"])
+@protected_api.get("/execution/stats", tags=["System"])
 async def get_execution_stats():
-    """Get execution agent order statistics"""
     return orchestrator.execution_agent.stats
 
 
-@app.get("/api/scheduler/status", tags=["System"])
+@protected_api.get("/scheduler/status", tags=["System"])
 async def get_scheduler_status():
-    """Get daily scheduler task status"""
-    # scheduler is module-level after lifespan init
     return {"message": "Scheduler status available after startup"}
 
 
-# ---- WebSocket ----
+def create_app(start_background: bool = True) -> FastAPI:
+    app = FastAPI(
+        title="Multi-Agent Crypto Trading System",
+        description="AI-powered crypto trading with real-time analysis and risk management",
+        version="1.1.0",
+        lifespan=lifespan,
+    )
+    app.state.start_background = start_background
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """
-    Real-time WebSocket feed.
-    Broadcasts: signals, trades, portfolio updates
-    """
-    await ws_manager.connect(websocket)
-    try:
-        # Send initial state
-        prices = orchestrator.market_analyst.get_current_prices()
-        portfolio = orchestrator.portfolio_agent.get_portfolio_snapshot(prices)
-        await websocket.send_json({
-            "type": "init",
-            "data": {
-                "status": orchestrator.get_status(),
-                "portfolio": portfolio.model_dump(mode="json"),
-            }
-        })
+    register_cors(app)
+    register_rate_limiter(app)
 
-        # Keep alive & handle client messages
-        while True:
-            try:
-                msg = await asyncio.wait_for(websocket.receive_text(), timeout=30)
-                data = json.loads(msg)
-                if data.get("type") == "ping":
-                    await websocket.send_json({"type": "pong"})
-            except asyncio.TimeoutError:
-                # Send heartbeat
-                await websocket.send_json({"type": "heartbeat", "timestamp": str(asyncio.get_event_loop().time())})
-    except WebSocketDisconnect:
-        ws_manager.disconnect(websocket)
-        logger.info("WebSocket client disconnected")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        ws_manager.disconnect(websocket)
+    app.include_router(auth_router)
+    app.include_router(protected_api)
+    app.include_router(backtest_router, dependencies=[Depends(get_current_user)])
+    app.include_router(history_router, dependencies=[Depends(get_current_user)])
+    app.include_router(llm_router, dependencies=[Depends(get_current_user)])
+
+    @app.get("/", tags=["Health"])
+    async def root():
+        return {"status": "running", "mode": settings.trading_mode, "version": "1.1.0"}
+
+    @app.get("/health", tags=["Health"])
+    async def health():
+        return {"status": "ok", "mode": settings.trading_mode, "version": "1.1.0"}
+
+    @app.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket):
+        await ws_manager.connect(websocket)
+        try:
+            prices = orchestrator.market_analyst.get_current_prices()
+            portfolio = orchestrator.portfolio_agent.get_portfolio_snapshot(prices)
+            await websocket.send_json(
+                {
+                    "type": "init",
+                    "data": {
+                        "status": orchestrator.get_status(),
+                        "portfolio": portfolio.model_dump(mode="json"),
+                    },
+                }
+            )
+
+            while True:
+                try:
+                    msg = await asyncio.wait_for(websocket.receive_text(), timeout=30)
+                    data = json.loads(msg)
+                    if data.get("type") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                except asyncio.TimeoutError:
+                    await websocket.send_json(
+                        {"type": "heartbeat", "timestamp": str(asyncio.get_event_loop().time())}
+                    )
+        except WebSocketDisconnect:
+            ws_manager.disconnect(websocket)
+            logger.info("WebSocket client disconnected")
+        except Exception as exc:
+            logger.error(f"WebSocket error: {exc}")
+            ws_manager.disconnect(websocket)
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request, exc):
+        logger.error(f"Unhandled exception on {request.url}: {type(exc).__name__}")
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+    return app
+
+
+app = create_app()
