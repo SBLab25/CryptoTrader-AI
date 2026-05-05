@@ -66,6 +66,10 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = Field(default="sqlite:///./trading.db", env="DATABASE_URL")
+    redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
+    market_data_mode: str = Field(default="polling", env="MARKET_DATA_MODE")
+    websocket_timeframe: str = Field(default="1m", env="WEBSOCKET_TIMEFRAME")
+    market_stream_enabled: bool = Field(default=False, env="MARKET_STREAM_ENABLED")
 
     # API
     api_host: str = Field(default="0.0.0.0", env="API_HOST")

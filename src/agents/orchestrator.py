@@ -23,6 +23,8 @@ from src.exchange.paper_engine import PaperTradingEngine, MockExchangeClient
 from src.risk.engine import risk_engine
 from src.notifications.telegram import notifier
 from src.core.config import settings
+from src.db.database import get_db_session
+from src.db.timescale import SignalLogStore
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -68,6 +70,27 @@ class TradingOrchestrator:
 
     def on_portfolio_update(self, callback: Callable):
         self._on_portfolio_update = callback
+
+    async def _record_signal_decision(
+        self,
+        signal_id: Optional[str],
+        passed: bool,
+        reason: Optional[str] = None,
+        trade_id: Optional[str] = None,
+    ) -> None:
+        if not signal_id:
+            return
+        try:
+            async with get_db_session() as session:
+                await SignalLogStore.update_risk_result(
+                    session,
+                    signal_id=signal_id,
+                    passed=passed,
+                    rejection_reason=reason,
+                    trade_id=trade_id,
+                )
+        except Exception as exc:
+            logger.warning(f"[ORCHESTRATOR] Could not update signal log {signal_id}: {exc}")
 
     async def start(self):
         """Start the trading loop"""
@@ -193,6 +216,7 @@ class TradingOrchestrator:
 
             if not risk_result.approved:
                 logger.info(f"[{cycle_id}] {signal.symbol} rejected: {risk_result.reason}")
+                await self._record_signal_decision(signal.id, passed=False, reason=risk_result.reason)
                 continue
 
             # STEP 9: Execute trade
@@ -213,6 +237,7 @@ class TradingOrchestrator:
 
             if "error" in order_result:
                 logger.error(f"[{cycle_id}] Order failed for {signal.symbol}: {order_result['error']}")
+                await self._record_signal_decision(signal.id, passed=True)
                 continue
 
             # Record trade
@@ -237,6 +262,7 @@ class TradingOrchestrator:
 
             if self._on_trade:
                 await self._on_trade(trade)
+            await self._record_signal_decision(signal.id, passed=True, trade_id=trade.id)
 
             logger.info(
                 f"[{cycle_id}] ✅ Trade placed: {signal.symbol} {side.value.upper()} "

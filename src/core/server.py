@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException,
 from fastapi.responses import JSONResponse
 
 from src.agents.orchestrator import TradingOrchestrator
-from src.api.auth import auth_router, get_current_user
+from src.api.auth import auth_router, get_current_user, ws_get_current_user
 from src.api.backtest_routes import router as backtest_router
 from src.api.middleware.cors import register_cors
 from src.api.middleware.rate_limiter import register_rate_limiter
@@ -56,15 +56,30 @@ protected_api = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)
 
 
 async def on_signal(signal: TradeSignal):
-    await ws_manager.broadcast({"type": "signal", "data": signal.model_dump(mode="json")})
+    payload = {"type": "signal", "data": signal.model_dump(mode="json")}
+    await ws_manager.broadcast(payload)
+    await _broadcast_phase2(payload)
 
 
 async def on_trade(trade: Trade):
-    await ws_manager.broadcast({"type": "trade", "data": trade.model_dump(mode="json")})
+    payload = {"type": "trade", "data": trade.model_dump(mode="json")}
+    await ws_manager.broadcast(payload)
+    await _broadcast_phase2(payload)
 
 
 async def on_portfolio_update(portfolio: Portfolio):
-    await ws_manager.broadcast({"type": "portfolio", "data": portfolio.model_dump(mode="json")})
+    payload = {"type": "portfolio", "data": portfolio.model_dump(mode="json")}
+    await ws_manager.broadcast(payload)
+    await _broadcast_phase2(payload)
+
+
+async def _broadcast_phase2(payload: dict) -> None:
+    try:
+        from src.db.redis_client import broadcast
+
+        await broadcast(payload)
+    except Exception:
+        return
 
 
 @asynccontextmanager
@@ -226,7 +241,7 @@ def create_app(start_background: bool = True) -> FastAPI:
         return {"status": "ok", "mode": settings.trading_mode, "version": "1.1.0"}
 
     @app.websocket("/ws")
-    async def websocket_endpoint(websocket: WebSocket):
+    async def websocket_endpoint(websocket: WebSocket, current_user: str = Depends(ws_get_current_user)):
         await ws_manager.connect(websocket)
         try:
             prices = orchestrator.market_analyst.get_current_prices()
@@ -253,7 +268,7 @@ def create_app(start_background: bool = True) -> FastAPI:
                     )
         except WebSocketDisconnect:
             ws_manager.disconnect(websocket)
-            logger.info("WebSocket client disconnected")
+            logger.info(f"WebSocket client disconnected: {current_user}")
         except Exception as exc:
             logger.error(f"WebSocket error: {exc}")
             ws_manager.disconnect(websocket)

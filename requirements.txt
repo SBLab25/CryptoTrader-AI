@@ -16,6 +16,7 @@ apscheduler==3.10.4
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 slowapi==0.1.9
+redis>=5.0
 
 # ── Database ──────────────────────────────────────────────────────────────────
 sqlalchemy==2.0.36
@@ -36,7 +37,7 @@ anthropic>=0.40.0            # LLM_PROVIDER=anthropic  (default)
 # Ollama / OpenRouter / Together / Gemini / Mistral use aiohttp directly — no extra SDK
 
 # ── Optional: multi-exchange ──────────────────────────────────────────────────
-# ccxt>=4.4.0                # 100+ exchanges → pip install ccxt
+# ccxt[pro]>=4.4.0           # 100+ exchanges + websocket feed → pip install "ccxt[pro]"
 # asyncpg>=0.29.0            # PostgreSQL     → pip install asyncpg
 
 # ── Optional: notifications ───────────────────────────────────────────────────

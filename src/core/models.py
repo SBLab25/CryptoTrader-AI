@@ -99,6 +99,17 @@ class MarketData(BaseModel):
     ohlcv: List[dict] = Field(default_factory=list)
 
 
+class OHLCV(BaseModel):
+    timestamp: datetime
+    symbol: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    source: str = "rest"
+
+
 class Portfolio(BaseModel):
     total_value: float
     available_balance: float

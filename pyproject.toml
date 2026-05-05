@@ -29,12 +29,13 @@ dependencies = [
     "passlib[bcrypt]>=1.7",
     "bcrypt<5",
     "slowapi>=0.1.9",
+    "redis>=5.0",
     "structlog>=24.4",
     "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
-multi-exchange = ["ccxt>=4.4"]
+multi-exchange = ["ccxt[pro]>=4.4"]
 telegram = ["python-telegram-bot>=21.6"]
 postgres = ["asyncpg>=0.29"]
 security = ["hvac>=2.3"]
