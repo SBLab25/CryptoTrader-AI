@@ -31,7 +31,7 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_analysis_prompt(symbol: str, indicators: dict, market_data: MarketData) -> str:
+def build_analysis_prompt(symbol: str, indicators: dict, market_data: MarketData, historical_context: str = "") -> str:
     return f"""Analyse the following market data and technical indicators for {symbol}.
 
 ## Market Data
@@ -50,6 +50,8 @@ def build_analysis_prompt(symbol: str, indicators: dict, market_data: MarketData
 - Trend:           {indicators.get('trend', 'N/A')}
 - Volume vs Avg:   {indicators.get('volume_vs_avg', 'N/A')}x
 - Technical Bias:  {indicators.get('technical_bias', 'N/A')} ({indicators.get('signal_strength', 0):.0%})
+
+{historical_context if historical_context else ""}
 
 Respond ONLY with a JSON object (no markdown fences):
 {{
@@ -101,8 +103,8 @@ def _parse_response(raw: str, fallback_price: float) -> dict:
         }
 
 
-async def analyze_with_llm(symbol: str, indicators: dict, market_data: MarketData) -> tuple[dict, dict]:
-    prompt = build_analysis_prompt(symbol, indicators, market_data)
+async def analyze_with_llm(symbol: str, indicators: dict, market_data: MarketData, historical_context: str = "") -> tuple[dict, dict]:
+    prompt = build_analysis_prompt(symbol, indicators, market_data, historical_context=historical_context)
     llm = get_llm()
     cfg = LLMConfig(max_tokens=1000, temperature=0.1, system_prompt=SYSTEM_PROMPT, timeout_sec=30)
 
@@ -169,8 +171,27 @@ async def generate_signal(symbol: str, market_data: MarketData, ohlcv: List[dict
     if "error" in indicators:
         return None
 
+    historical_context = ""
+    try:
+        from src.memory.retriever import format_rag_context, retrieve_similar_signals
+
+        rag_hits = await retrieve_similar_signals(
+            indicators={
+                "rsi": indicators.get("rsi"),
+                "macd_histogram": (indicators.get("macd") or {}).get("histogram"),
+                "bb_percent_b": (indicators.get("bollinger_bands") or {}).get("percent_b"),
+                "ema_trend": indicators.get("trend"),
+                "atr": indicators.get("atr"),
+                "volume_ratio": indicators.get("volume_vs_avg"),
+            },
+            symbol=symbol,
+        )
+        historical_context = format_rag_context(rag_hits)
+    except Exception:
+        historical_context = ""
+
     started = time.monotonic()
-    ai_result, llm_meta = await analyze_with_llm(symbol, indicators, market_data)
+    ai_result, llm_meta = await analyze_with_llm(symbol, indicators, market_data, historical_context=historical_context)
     latency_ms = int((time.monotonic() - started) * 1000)
 
     signal_map = {
@@ -212,6 +233,31 @@ async def generate_signal(symbol: str, market_data: MarketData, ohlcv: List[dict
         ai_analysis=str(ai_result.get("key_factors", [])),
     )
     await _persist_signal_log(trade_signal, indicators, llm_meta, latency_ms)
+    try:
+        from src.memory.signal_store import store_signal
+
+        asyncio.create_task(
+            store_signal(
+                signal_id=trade_signal.id,
+                symbol=trade_signal.symbol,
+                action=trade_signal.signal.value.upper(),
+                confidence=trade_signal.confidence,
+                strategy="ai_llm_ta",
+                reasoning=trade_signal.reasoning,
+                indicators={
+                    "rsi": indicators.get("rsi"),
+                    "macd_histogram": (indicators.get("macd") or {}).get("histogram"),
+                    "bb_percent_b": (indicators.get("bollinger_bands") or {}).get("percent_b"),
+                    "ema_trend": indicators.get("trend"),
+                    "atr": indicators.get("atr"),
+                    "volume_ratio": indicators.get("volume_vs_avg"),
+                },
+                llm_provider=llm_meta.get("provider", ""),
+                mode=settings.trading_mode,
+            )
+        )
+    except Exception:
+        pass
 
     if signal_enum == SignalStrength.NEUTRAL or confidence < 0.50:
         logger.info(f"[SIGNAL] {symbol}: {signal_str} ({confidence:.0%}) - skipping")

@@ -16,6 +16,7 @@ from src.api.middleware.rate_limiter import register_rate_limiter
 from src.api.routes.history import router as history_router
 from src.api.routes.llm_routes import router as llm_router
 from src.api.routes.approvals import router as approvals_router
+from src.api.routes.analytics import router as analytics_router
 from src.core.config import settings
 from src.core.models import Portfolio, Trade, TradeSignal
 from src.db.database import close_db, init_db
@@ -66,6 +67,18 @@ async def on_trade(trade: Trade):
     payload = {"type": "trade", "data": trade.model_dump(mode="json")}
     await ws_manager.broadcast(payload)
     await _broadcast_phase2(payload)
+    if trade.signal_id and trade.pnl is not None:
+        try:
+            from src.memory.signal_store import update_outcome
+
+            await update_outcome(
+                signal_id=trade.signal_id,
+                outcome="WIN" if trade.pnl > 0 else "LOSS" if trade.pnl < 0 else "BREAKEVEN",
+                pnl_pct=trade.pnl_pct or 0.0,
+                trade_id=trade.id,
+            )
+        except Exception:
+            pass
 
 
 async def on_portfolio_update(portfolio: Portfolio):
@@ -233,6 +246,7 @@ def create_app(start_background: bool = True) -> FastAPI:
     app.include_router(history_router, dependencies=[Depends(get_current_user)])
     app.include_router(llm_router, dependencies=[Depends(get_current_user)])
     app.include_router(approvals_router)
+    app.include_router(analytics_router, dependencies=[Depends(get_current_user)])
 
     @app.get("/", tags=["Health"])
     async def root():
@@ -240,7 +254,18 @@ def create_app(start_background: bool = True) -> FastAPI:
 
     @app.get("/health", tags=["Health"])
     async def health():
-        return {"status": "ok", "mode": settings.trading_mode, "version": "1.1.0"}
+        from src.graph_analysis.correlation import get_graph_info
+        from src.memory.embeddings import get_model_info
+        from src.memory.qdrant_client import get_collection_info
+
+        return {
+            "status": "ok",
+            "mode": settings.trading_mode,
+            "version": "1.1.0",
+            "memory": get_collection_info(),
+            "embeddings": get_model_info(),
+            "correlation_graph": await get_graph_info(),
+        }
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket, current_user: str = Depends(ws_get_current_user)):

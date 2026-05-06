@@ -49,13 +49,20 @@ async def signal_agent_node(state: dict) -> dict:
     try:
         market_data = _build_market_data(state)
         strategy = _select_strategy(state.get("indicators") or {})
+        rag_hits = []
+        try:
+            from src.memory.retriever import retrieve_similar_signals
+
+            rag_hits = await retrieve_similar_signals(state.get("indicators") or {}, state["symbol"], strategy=strategy)
+        except Exception:
+            rag_hits = []
         signal = await generate_signal(state["symbol"], market_data, state.get("ohlcv") or [])
         if signal is None:
             return {
                 "signal": {"action": "HOLD", "confidence": 0.0, "strategy": strategy},
                 "selected_strategy": strategy,
                 "errors": [],
-                "node_timings": {"signal_agent": round((time.monotonic() - started) * 1000, 2)},
+                "node_timings": {"signal_agent": round((time.monotonic() - started) * 1000, 2), "rag_hits": len(rag_hits)},
             }
 
         signal_dict = {
@@ -75,7 +82,7 @@ async def signal_agent_node(state: dict) -> dict:
             "signal": signal_dict,
             "selected_strategy": strategy,
             "errors": [],
-            "node_timings": {"signal_agent": round((time.monotonic() - started) * 1000, 2)},
+            "node_timings": {"signal_agent": round((time.monotonic() - started) * 1000, 2), "rag_hits": len(rag_hits)},
         }
     except Exception as exc:
         return {

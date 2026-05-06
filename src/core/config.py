@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     workflow_engine: str = Field(default="classic", env="WORKFLOW_ENGINE")
     approval_threshold_usd: float = Field(default=100.0, env="APPROVAL_THRESHOLD_USD")
     approval_timeout_seconds: int = Field(default=120, env="APPROVAL_TIMEOUT_SECONDS")
+    qdrant_host: str = Field(default="localhost", env="QDRANT_HOST")
+    qdrant_port: int = Field(default=6333, env="QDRANT_PORT")
 
     # API
     api_host: str = Field(default="0.0.0.0", env="API_HOST")

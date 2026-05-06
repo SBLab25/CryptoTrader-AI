@@ -85,17 +85,23 @@ async def risk_engine_node(state: dict) -> dict:
         portfolio = _portfolio_from_state(state)
         assessment = risk_engine.assess_trade(signal, portfolio, len(portfolio.open_positions))
         if assessment.approved:
+            correlated_ok, correlated_reason = await _check_correlation_exposure(
+                state["symbol"], [position.symbol for position in portfolio.open_positions]
+            )
+            if not correlated_ok:
+                assessment.approved = False
+                assessment.reason = correlated_reason
             result = {
-                "passed": True,
-                "rejected_by_layer": None,
-                "rejection_reason": None,
+                "passed": assessment.approved,
+                "rejected_by_layer": None if assessment.approved else 9,
+                "rejection_reason": None if assessment.approved else assessment.reason,
                 "approved_position_usd": round(assessment.trade_size * signal.entry_price, 4),
                 "trade_size": assessment.trade_size,
                 "risk_amount": assessment.risk_amount,
                 "risk_pct": assessment.risk_pct,
                 "warnings": assessment.warnings,
             }
-            await _update_signal_log(signal.id, True)
+            await _update_signal_log(signal.id, assessment.approved, reason=None if assessment.approved else assessment.reason)
         else:
             reason = assessment.reason or "Risk validation failed"
             rejected_by_layer = 1
@@ -133,3 +139,12 @@ async def risk_engine_node(state: dict) -> dict:
             "errors": [f"risk_engine_node failed: {exc}"],
             "node_timings": {"risk_engine": round((time.monotonic() - started) * 1000, 2)},
         }
+
+
+async def _check_correlation_exposure(symbol: str, open_positions: list[str]) -> tuple[bool, str]:
+    try:
+        from src.graph_analysis.correlation import check_correlated_exposure
+
+        return await check_correlated_exposure(symbol, open_positions)
+    except Exception:
+        return True, ""
