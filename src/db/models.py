@@ -99,3 +99,19 @@ class ExchangeCredentialRecord(Base):
     permissions_json = Column(Text, nullable=False, default='["trade","read"]')
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+class ApprovalRequestRecord(Base):
+    __tablename__ = "approval_requests"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    symbol = Column(String(20), nullable=False, index=True)
+    side = Column(String(10), nullable=False)
+    position_usd = Column(Float, nullable=False)
+    confidence = Column(Float, nullable=False)
+    status = Column(String(20), nullable=False, default="PENDING", index=True)
+    trade_payload_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    decided_at = Column(DateTime, nullable=True)
+    decided_by = Column(String(100), nullable=True)

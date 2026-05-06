@@ -15,6 +15,7 @@ from src.api.middleware.cors import register_cors
 from src.api.middleware.rate_limiter import register_rate_limiter
 from src.api.routes.history import router as history_router
 from src.api.routes.llm_routes import router as llm_router
+from src.api.routes.approvals import router as approvals_router
 from src.core.config import settings
 from src.core.models import Portfolio, Trade, TradeSignal
 from src.db.database import close_db, init_db
@@ -231,6 +232,7 @@ def create_app(start_background: bool = True) -> FastAPI:
     app.include_router(backtest_router, dependencies=[Depends(get_current_user)])
     app.include_router(history_router, dependencies=[Depends(get_current_user)])
     app.include_router(llm_router, dependencies=[Depends(get_current_user)])
+    app.include_router(approvals_router)
 
     @app.get("/", tags=["Health"])
     async def root():
