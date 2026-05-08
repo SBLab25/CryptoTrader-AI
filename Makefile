@@ -82,6 +82,12 @@ test-cov:
 	pytest tests/unit/ --cov=src --cov-report=term-missing --cov-report=html
 	@echo "Coverage report: htmlcov/index.html"
 
+test-phase6:
+	pytest tests/unit/test_phase6_live_hardening.py -v
+
+preflight:
+	python scripts/preflight_check.py
+
 # ── Code Quality ──────────────────────────────────────────────────────────────
 lint:
 	ruff check src/ tests/

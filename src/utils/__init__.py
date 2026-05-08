@@ -1,2 +1,3 @@
-# File: src/utils/__init__.py
-# Package: src.utils
+from src.utils.circuit_breaker import CircuitBreaker, CircuitOpenError
+
+__all__ = ["CircuitBreaker", "CircuitOpenError"]

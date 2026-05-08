@@ -20,8 +20,10 @@ from src.api.routes.analytics import router as analytics_router
 from src.core.config import settings
 from src.core.models import Portfolio, Trade, TradeSignal
 from src.db.database import close_db, init_db
+from src.notifications.ntfy import send_notification
 from src.notifications.telegram import notifier
 from src.risk.engine import risk_engine
+from src.utils.circuit_breaker import CircuitBreaker
 from src.utils.logger import get_logger
 from src.utils.scheduler import build_scheduler
 
@@ -96,6 +98,40 @@ async def _broadcast_phase2(payload: dict) -> None:
         return
 
 
+async def _test_ntfy_on_startup() -> None:
+    try:
+        await send_notification(
+            title="CryptoTrader-AI Started",
+            message=f"Mode: {settings.trading_mode}\nSymbols: {', '.join(settings.symbol_list)}",
+            priority=2,
+        )
+    except Exception:
+        return
+
+
+async def _daily_summary_loop() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    while True:
+        now = datetime.now(tz=timezone.utc)
+        next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        await asyncio.sleep((next_midnight - now).total_seconds())
+        try:
+            prices = orchestrator.market_analyst.get_current_prices()
+            portfolio = orchestrator.portfolio_agent.get_portfolio_snapshot(prices)
+            await send_notification(
+                title="Daily Summary",
+                message=(
+                    f"Open trades: {orchestrator.portfolio_agent.open_trade_count}\n"
+                    f"Portfolio: ${portfolio.total_value:,.2f}\n"
+                    f"PnL: ${portfolio.total_pnl:+.2f}"
+                ),
+                priority=2,
+            )
+        except Exception:
+            continue
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -118,6 +154,8 @@ async def lifespan(app: FastAPI):
             ws_broadcast_fn=ws_manager.broadcast,
         )
         sched_task = asyncio.create_task(scheduler.start())
+        asyncio.create_task(_test_ntfy_on_startup())
+        asyncio.create_task(_daily_summary_loop())
         logger.info("Trading orchestrator started in background")
 
         await notifier.alert_system_start(settings.trading_mode, settings.symbol_list)
@@ -140,7 +178,9 @@ async def lifespan(app: FastAPI):
 
 @protected_api.get("/status", tags=["System"])
 async def get_status():
-    return orchestrator.get_status()
+    status = orchestrator.get_status()
+    status["circuit_breakers"] = await CircuitBreaker.get_all_states(["cryptocom"])
+    return status
 
 
 @protected_api.get("/portfolio", tags=["Portfolio"])
@@ -262,6 +302,7 @@ def create_app(start_background: bool = True) -> FastAPI:
             "status": "ok",
             "mode": settings.trading_mode,
             "version": "1.1.0",
+            "circuit_breakers": await CircuitBreaker.get_all_states(["cryptocom"]),
             "memory": get_collection_info(),
             "embeddings": get_model_info(),
             "correlation_graph": await get_graph_info(),

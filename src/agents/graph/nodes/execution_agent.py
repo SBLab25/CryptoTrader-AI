@@ -9,6 +9,7 @@ from src.agents.graph.runtime import execution_agent, portfolio_agent
 from src.core.models import RiskAssessment
 from src.db.database import get_db_session
 from src.db.timescale import SignalLogStore
+from src.notifications.ntfy import notify_trade_opened
 
 
 async def _update_signal_trade(signal_id: str | None, trade_id: str | None) -> None:
@@ -56,6 +57,16 @@ async def execution_agent_node(state: dict) -> dict:
         cost = trade.quantity * trade.entry_price
         portfolio_agent.record_trade_opened(trade, cost)
         await _update_signal_trade(signal.id, trade.id)
+        await notify_trade_opened(
+            symbol=trade.symbol,
+            side=trade.side.value,
+            entry_price=trade.entry_price,
+            stop_loss=trade.stop_loss,
+            take_profit=trade.take_profit,
+            confidence=signal.confidence,
+            position_usd=cost,
+            strategy=trade.strategy,
+        )
         return {
             "trade": trade.model_dump(mode="json"),
             "execution_result": {"status": "filled", "trade_id": trade.id, "order_id": trade.exchange_order_id},

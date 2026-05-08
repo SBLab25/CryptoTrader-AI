@@ -256,14 +256,19 @@ class ExecutionAgent:
         quantity: float,
         price: float,
     ) -> Optional[dict]:
-        """
-        Placeholder for live exchange order placement.
-        In production: swap this for CryptocomExchangeClient or CCXTAdapter.
-        """
-        raise NotImplementedError(
-            "Live order placement not configured. "
-            "Set TRADING_MODE=paper or implement _place_live_order with your exchange client."
-        )
+        """Place a live order through the Phase 6 LiveEngine."""
+        from src.exchange.live_engine import LiveEngine
+
+        size_pct = max(0.0, min(1.0, (quantity * price) / max(self._paper.balance, 1e-8)))
+        engine = LiveEngine()
+        order = await engine.place_order(symbol=symbol, side=side.upper(), size_pct=size_pct)
+        if not order:
+            return {"error": "Live order rejected"}
+        return {
+            "order_id": str(order.get("id")),
+            "amount": order.get("amount"),
+            "price": order.get("price") or order.get("average") or price,
+        }
 
     async def _get_current_price(self, symbol: str) -> Optional[float]:
         """Get current market price for slippage check"""

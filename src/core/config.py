@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False, env="DEBUG")
     vault_addr: str = Field(default="", env="VAULT_ADDR")
     vault_token: str = Field(default="", env="VAULT_TOKEN")
+    ntfy_url: str = Field(default="", env="NTFY_URL")
+    ntfy_topic: str = Field(default="", env="NTFY_TOPIC")
+    ntfy_token: str = Field(default="", env="NTFY_TOKEN")
 
     # Notifications
     telegram_bot_token: str = Field(default="", env="TELEGRAM_BOT_TOKEN")
@@ -137,3 +140,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_settings() -> Settings:
+    return settings
