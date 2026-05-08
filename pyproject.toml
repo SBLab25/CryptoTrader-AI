@@ -39,6 +39,13 @@ multi-exchange = ["ccxt[pro]>=4.4"]
 telegram = ["python-telegram-bot>=21.6"]
 postgres = ["asyncpg>=0.29"]
 security = ["hvac>=2.3"]
+rl = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "pyarrow>=17.0",
+    "gymnasium>=0.29",
+    "stable-baselines3[extra]>=2.3",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -47,7 +54,7 @@ dev = [
     "mypy>=1.11",
 ]
 all = [
-    "crypto-trading-agent[multi-exchange,telegram,postgres,security,dev]"
+    "crypto-trading-agent[multi-exchange,telegram,postgres,security,rl,dev]"
 ]
 
 [project.scripts]

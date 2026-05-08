@@ -39,6 +39,11 @@ anthropic>=0.40.0            # LLM_PROVIDER=anthropic  (default)
 # ── Optional: multi-exchange ──────────────────────────────────────────────────
 # ccxt[pro]>=4.4.0           # 100+ exchanges + websocket feed → pip install "ccxt[pro]"
 # asyncpg>=0.29.0            # PostgreSQL     → pip install asyncpg
+# numpy>=2.0                 # Phase 5 replay/RL stack
+# pandas>=2.2                # Phase 5 replay/RL stack
+# pyarrow>=17.0              # Parquet support for replay/training datasets
+# gymnasium>=0.29            # RL environment interface
+# stable-baselines3[extra]>=2.3  # PPO/SAC/A2C training and inference
 
 # ── Optional: notifications ───────────────────────────────────────────────────
 # python-telegram-bot>=21.6  # Telegram alerts → pip install python-telegram-bot
