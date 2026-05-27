@@ -3,14 +3,11 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, Query, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import HTTPException, Query, Request, status
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
 from src.core.config import settings
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 
 class TokenData(BaseModel):
@@ -66,7 +63,21 @@ def decode_token(token: str, expected_type: str = "access") -> TokenData:
         raise credentials_exception from exc
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
+def _extract_bearer_token(request: Request) -> str | None:
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        return auth_header.split(" ", 1)[1].strip()
+    return request.cookies.get("access_token")
+
+
+async def get_current_user(request: Request) -> str:
+    token = _extract_bearer_token(request)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return decode_token(token, expected_type="access").username
 
 

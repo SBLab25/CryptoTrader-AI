@@ -13,6 +13,7 @@ from src.api.auth import auth_router, get_current_user, ws_get_current_user
 from src.api.backtest_routes import router as backtest_router
 from src.api.middleware.cors import register_cors
 from src.api.middleware.rate_limiter import register_rate_limiter
+from src.api.routes.dashboard import bind_orchestrator, router as dashboard_router
 from src.api.routes.history import router as history_router
 from src.api.routes.llm_routes import router as llm_router
 from src.api.routes.approvals import router as approvals_router
@@ -179,6 +180,9 @@ async def lifespan(app: FastAPI):
 @protected_api.get("/status", tags=["System"])
 async def get_status():
     status = orchestrator.get_status()
+    status["trading_active"] = status.pop("is_running")
+    status["llm_provider"] = settings.llm_provider
+    status["llm_model"] = settings.llm_model or "default"
     status["circuit_breakers"] = await CircuitBreaker.get_all_states(["cryptocom"])
     return status
 
@@ -204,14 +208,29 @@ async def get_positions():
 
 @protected_api.get("/risk", tags=["Risk"])
 async def get_risk_status():
+    breaker_state = (await CircuitBreaker.get_all_states(["cryptocom"])).get("cryptocom", {})
+    portfolio = orchestrator.portfolio_agent.get_portfolio_snapshot(orchestrator.market_analyst.get_current_prices())
+    current_drawdown = 0.0
+    if orchestrator.portfolio_agent._peak_value:
+        current_drawdown = max(
+            0.0,
+            (orchestrator.portfolio_agent._peak_value - portfolio.total_value) / orchestrator.portfolio_agent._peak_value,
+        )
     return {
         "is_paused": risk_engine.is_paused,
+        "paused": risk_engine.is_paused,
+        "pause_reason": getattr(risk_engine, "pause_reason", None),
         "max_position_size_pct": settings.max_position_size_pct,
         "stop_loss_pct": settings.stop_loss_pct,
         "take_profit_pct": settings.take_profit_pct,
         "max_daily_loss_pct": settings.max_daily_loss_pct,
         "max_drawdown_pct": settings.max_drawdown_pct,
         "max_open_positions": settings.max_open_positions,
+        "daily_loss_pct": max(0.0, float(getattr(risk_engine, "_daily_pnl", 0.0)) / max(settings.initial_capital, 1.0)),
+        "current_drawdown": round(current_drawdown, 4),
+        "open_positions": portfolio.open_positions.__len__(),
+        "circuit_breaker_state": str(breaker_state.get("state", "closed")).lower(),
+        "correlation_graph_nodes": len(settings.symbol_list),
     }
 
 
@@ -279,9 +298,11 @@ def create_app(start_background: bool = True) -> FastAPI:
 
     register_cors(app)
     register_rate_limiter(app)
+    bind_orchestrator(orchestrator)
 
     app.include_router(auth_router)
     app.include_router(protected_api)
+    app.include_router(dashboard_router)
     app.include_router(backtest_router, dependencies=[Depends(get_current_user)])
     app.include_router(history_router, dependencies=[Depends(get_current_user)])
     app.include_router(llm_router, dependencies=[Depends(get_current_user)])
@@ -308,17 +329,26 @@ def create_app(start_background: bool = True) -> FastAPI:
             "correlation_graph": await get_graph_info(),
         }
 
+    @app.get("/health/detail", tags=["Health"])
+    async def health_detail():
+        return await health()
+
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket, current_user: str = Depends(ws_get_current_user)):
         await ws_manager.connect(websocket)
         try:
             prices = orchestrator.market_analyst.get_current_prices()
             portfolio = orchestrator.portfolio_agent.get_portfolio_snapshot(prices)
+            status_payload = orchestrator.get_status()
+            status_payload["trading_active"] = status_payload.pop("is_running")
+            status_payload["llm_provider"] = settings.llm_provider
+            status_payload["llm_model"] = settings.llm_model or "default"
+            status_payload["circuit_breakers"] = await CircuitBreaker.get_all_states(["cryptocom"])
             await websocket.send_json(
                 {
                     "type": "init",
                     "data": {
-                        "status": orchestrator.get_status(),
+                        "status": status_payload,
                         "portfolio": portfolio.model_dump(mode="json"),
                     },
                 }
