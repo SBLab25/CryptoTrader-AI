@@ -12,6 +12,7 @@ from sqlalchemy import select
 from src.core.config import settings
 from src.db.database import get_db_session
 from src.db.models import ApprovalRequestRecord
+from src.notifications.ntfy import NtfyClient
 
 PENDING = "PENDING"
 APPROVED = "APPROVED"
@@ -80,6 +81,15 @@ async def approval_gate_node(state: dict) -> dict:
         record = await _get_existing_pending(state["symbol"], state.get("cycle_id"))
         if record is None:
             record = await _create_approval_request(state)
+            try:
+                await NtfyClient().approval_needed(
+                    symbol=record.symbol,
+                    side=record.side,
+                    amount=float(record.position_usd),
+                    expires_s=settings.approval_timeout_seconds,
+                )
+            except Exception:
+                pass
 
         deadline = time.monotonic() + settings.approval_timeout_seconds
         current = record

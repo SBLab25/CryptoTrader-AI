@@ -9,7 +9,8 @@ from src.agents.graph.runtime import execution_agent, portfolio_agent
 from src.core.models import RiskAssessment
 from src.db.database import get_db_session
 from src.db.timescale import SignalLogStore
-from src.notifications.ntfy import notify_trade_opened
+from src.notifications.ntfy import NtfyClient, notify_trade_opened
+from src.risk.hard_caps import hard_caps
 
 
 async def _update_signal_trade(signal_id: str | None, trade_id: str | None) -> None:
@@ -46,6 +47,18 @@ async def execution_agent_node(state: dict) -> dict:
             risk_pct=float(risk_data.get("risk_pct", 0.0)),
             warnings=list(risk_data.get("warnings") or []),
         )
+        if str(state.get("mode", "paper")).lower() == "live":
+            trade_notional = float(risk.trade_size) * float(signal.entry_price)
+            cap_check = hard_caps.check(
+                usd_amount=trade_notional,
+                daily_loss_usd=max(0.0, float(getattr(portfolio_agent, "_daily_pnl_start", 0.0) - getattr(portfolio_agent, "_cash_balance", 0.0))),
+            )
+            if not cap_check.approved:
+                return {
+                    "execution_result": {"status": "skipped", "reason": cap_check.reason},
+                    "errors": [],
+                    "node_timings": {"execution_agent": round((time.monotonic() - started) * 1000, 2)},
+                }
         trade = await execution_agent.execute_trade(signal, risk, is_paper=str(state.get("mode", "paper")).lower() != "live")
         if trade is None:
             return {
@@ -66,6 +79,15 @@ async def execution_agent_node(state: dict) -> dict:
             confidence=signal.confidence,
             position_usd=cost,
             strategy=trade.strategy,
+        )
+        ntfy = NtfyClient()
+        await ntfy.trade_opened(
+            symbol=trade.symbol,
+            side=trade.side.value,
+            amount=cost,
+            price=trade.entry_price,
+            strategy=trade.strategy,
+            mode=str(state.get("mode", "paper")).lower(),
         )
         return {
             "trade": trade.model_dump(mode="json"),

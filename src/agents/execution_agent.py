@@ -16,6 +16,7 @@ from enum import Enum
 from src.core.models import Trade, TradeSignal, OrderSide, OrderStatus, RiskAssessment
 from src.exchange.paper_engine import PaperTradingEngine
 from src.core.config import settings
+from src.risk.hard_caps import hard_caps
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -86,6 +87,15 @@ class ExecutionAgent:
         if risk.trade_size <= 0:
             logger.warning(f"[EXEC] Zero trade size for {signal.symbol} — skipping")
             return None
+
+        if not is_paper:
+            cap_check = hard_caps.check(
+                usd_amount=float(risk.trade_size) * float(signal.entry_price),
+                daily_loss_usd=max(0.0, float(getattr(self._paper, "realized_pnl", 0.0) * -1)),
+            )
+            if not cap_check.approved:
+                logger.error(f"[EXEC] Hard cap blocked trade for {signal.symbol}: {cap_check.reason}")
+                return None
 
         entry_price = signal.entry_price
         quantity = risk.trade_size
